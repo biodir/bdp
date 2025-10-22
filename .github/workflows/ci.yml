@@ -458,7 +458,7 @@ jobs:
 
       - name: Build Registry API Docker image
         if: needs.detect-changes.outputs.should_run_backend == 'true'
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: src/BDP.Registry.API/Dockerfile
@@ -469,7 +469,7 @@ jobs:
 
       - name: Build Registry Web Docker image
         if: needs.detect-changes.outputs.should_run_frontend == 'true'
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: src/BDP.Registry.Web
           file: src/BDP.Registry.Web/Dockerfile
