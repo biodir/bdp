@@ -1,0 +1,55 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{4786C369-2985-48AF-8643-4F0406F1FF88}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BDP.CLI", "src\BDP.CLI\BDP.CLI.csproj", "{AC2D474C-57A7-47D8-9A1E-03109D0D1099}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BDP.Domain", "src\BDP.Domain\BDP.Domain.csproj", "{BBF6536A-C01F-4741-9683-4D4B0E537D4C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BDP.Application", "src\BDP.Application\BDP.Application.csproj", "{99F582B3-BFF6-416E-A981-4C0646349CF4}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BDP.Infrastructure", "src\BDP.Infrastructure\BDP.Infrastructure.csproj", "{489C97A6-20F1-4CBE-A8CD-35B6FE362512}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BDP.Registry.API", "src\BDP.Registry.API\BDP.Registry.API.csproj", "{ED68B6EB-5835-4C99-8D28-E5B0B3C5FB4C}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{AC2D474C-57A7-47D8-9A1E-03109D0D1099} = {4786C369-2985-48AF-8643-4F0406F1FF88}
+		{BBF6536A-C01F-4741-9683-4D4B0E537D4C} = {4786C369-2985-48AF-8643-4F0406F1FF88}
+		{99F582B3-BFF6-416E-A981-4C0646349CF4} = {4786C369-2985-48AF-8643-4F0406F1FF88}
+		{489C97A6-20F1-4CBE-A8CD-35B6FE362512} = {4786C369-2985-48AF-8643-4F0406F1FF88}
+		{ED68B6EB-5835-4C99-8D28-E5B0B3C5FB4C} = {4786C369-2985-48AF-8643-4F0406F1FF88}
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{AC2D474C-57A7-47D8-9A1E-03109D0D1099}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AC2D474C-57A7-47D8-9A1E-03109D0D1099}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AC2D474C-57A7-47D8-9A1E-03109D0D1099}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AC2D474C-57A7-47D8-9A1E-03109D0D1099}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BBF6536A-C01F-4741-9683-4D4B0E537D4C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BBF6536A-C01F-4741-9683-4D4B0E537D4C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BBF6536A-C01F-4741-9683-4D4B0E537D4C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BBF6536A-C01F-4741-9683-4D4B0E537D4C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{99F582B3-BFF6-416E-A981-4C0646349CF4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{99F582B3-BFF6-416E-A981-4C0646349CF4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{99F582B3-BFF6-416E-A981-4C0646349CF4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{99F582B3-BFF6-416E-A981-4C0646349CF4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{489C97A6-20F1-4CBE-A8CD-35B6FE362512}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{489C97A6-20F1-4CBE-A8CD-35B6FE362512}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{489C97A6-20F1-4CBE-A8CD-35B6FE362512}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{489C97A6-20F1-4CBE-A8CD-35B6FE362512}.Release|Any CPU.Build.0 = Release|Any CPU
+		{ED68B6EB-5835-4C99-8D28-E5B0B3C5FB4C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{ED68B6EB-5835-4C99-8D28-E5B0B3C5FB4C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{ED68B6EB-5835-4C99-8D28-E5B0B3C5FB4C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{ED68B6EB-5835-4C99-8D28-E5B0B3C5FB4C}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

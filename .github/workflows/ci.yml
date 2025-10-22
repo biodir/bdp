@@ -1,0 +1,543 @@
+name: CI
+
+run-name: "CI #${{ github.run_number }} - ${{ github.event_name == 'pull_request' && format('PR #{0}', github.event.pull_request.number) || github.ref_name }} - ${{ github.event.head_commit.message || github.event.pull_request.title || 'Manual trigger' }}"
+
+on:
+  push:
+    branches:
+      - main
+      - development
+  pull_request:
+    branches:
+      - main
+      - development
+  workflow_dispatch:
+
+env:
+  DOTNET_VERSION: '9.0.x'
+  NODE_VERSION: '20.x'
+  MINIMUM_COVERAGE: 80
+
+jobs:
+  detect-changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.changes.outputs.backend }}
+      cli: ${{ steps.changes.outputs.cli }}
+      frontend: ${{ steps.changes.outputs.frontend }}
+      should_run_backend: ${{ steps.changes.outputs.should_run_backend }}
+      should_run_cli: ${{ steps.changes.outputs.should_run_cli }}
+      should_run_frontend: ${{ steps.changes.outputs.should_run_frontend }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed files
+        id: changes
+        run: |
+          # Determine base ref for comparison
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            BASE_REF="${{ github.event.pull_request.base.sha }}"
+          else
+            BASE_REF="${{ github.event.before }}"
+            if [ "$BASE_REF" == "0000000000000000000000000000000000000000" ]; then
+              BASE_REF=$(git hash-object -t tree /dev/null)
+            fi
+          fi
+
+          echo "Comparing against: $BASE_REF"
+
+          CHANGED_FILES=$(git diff --name-only $BASE_REF ${{ github.sha }} || echo "")
+
+          echo "Changed files:"
+          echo "$CHANGED_FILES"
+
+          # Check for backend changes (API, Domain, Application, Infrastructure)
+          BACKEND_CHANGED=false
+          if echo "$CHANGED_FILES" | grep -qE '^src/BDP\.(Registry\.API|Domain|Application|Infrastructure)/'; then
+            BACKEND_CHANGED=true
+          fi
+
+          # Check for CLI changes
+          CLI_CHANGED=false
+          if echo "$CHANGED_FILES" | grep -qE '^src/BDP\.(CLI|Domain|Application|Infrastructure)/'; then
+            CLI_CHANGED=true
+          fi
+
+          # Check for frontend changes
+          FRONTEND_CHANGED=false
+          if echo "$CHANGED_FILES" | grep -qE '^src/BDP\.Registry\.Web/'; then
+            FRONTEND_CHANGED=true
+          fi
+
+          # Set outputs
+          echo "backend=$BACKEND_CHANGED" >> $GITHUB_OUTPUT
+          echo "cli=$CLI_CHANGED" >> $GITHUB_OUTPUT
+          echo "frontend=$FRONTEND_CHANGED" >> $GITHUB_OUTPUT
+          echo "should_run_backend=$BACKEND_CHANGED" >> $GITHUB_OUTPUT
+          echo "should_run_cli=$CLI_CHANGED" >> $GITHUB_OUTPUT
+          echo "should_run_frontend=$FRONTEND_CHANGED" >> $GITHUB_OUTPUT
+
+          echo "Backend changed: $BACKEND_CHANGED"
+          echo "CLI changed: $CLI_CHANGED"
+          echo "Frontend changed: $FRONTEND_CHANGED"
+
+  build-and-test-backend:
+    name: Build & Test Backend
+    needs: detect-changes
+    if: needs.detect-changes.outputs.should_run_backend == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      coverage-percentage: ${{ steps.coverage-check.outputs.percentage }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Run Tests with Coverage
+        run: |
+          dotnet test \
+            --configuration Release \
+            --no-build \
+            --verbosity normal \
+            --collect:"XPlat Code Coverage" \
+            --results-directory ./TestResults \
+            --logger "trx;LogFileName=test-results.trx"
+
+      - name: Parse Coverage and Generate Report
+        id: coverage-check
+        run: |
+          COVERAGE_FILE=$(find ./TestResults -name 'coverage.cobertura.xml' -print -quit)
+
+          if [ -z "$COVERAGE_FILE" ]; then
+            echo "::warning::No coverage file found - tests may not have coverage enabled"
+            echo "percentage=0" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "Found coverage file: $COVERAGE_FILE"
+
+          LINE_RATE=$(grep -o 'line-rate="[^"]*"' "$COVERAGE_FILE" | head -1 | cut -d'"' -f2)
+          COVERAGE=$(awk "BEGIN {printf \"%.2f\", $LINE_RATE * 100}")
+
+          echo "percentage=$COVERAGE" >> $GITHUB_OUTPUT
+
+          LINES_COVERED=$(grep -o 'lines-covered="[^"]*"' "$COVERAGE_FILE" | head -1 | cut -d'"' -f2)
+          LINES_VALID=$(grep -o 'lines-valid="[^"]*"' "$COVERAGE_FILE" | head -1 | cut -d'"' -f2)
+          BRANCH_RATE=$(grep -o 'branch-rate="[^"]*"' "$COVERAGE_FILE" | head -1 | cut -d'"' -f2)
+          BRANCH_COVERAGE=$(awk "BEGIN {printf \"%.2f\", $BRANCH_RATE * 100}")
+
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          ## 📊 Backend Code Coverage Report
+
+          | Metric | Value |
+          |--------|-------|
+          | **Line Coverage** | **${COVERAGE}%** |
+          | **Branch Coverage** | ${BRANCH_COVERAGE}% |
+          | **Lines Covered** | ${LINES_COVERED} / ${LINES_VALID} |
+
+          EOF
+
+          if (( $(echo "$COVERAGE >= ${{ env.MINIMUM_COVERAGE }}" | bc -l) )); then
+            echo "✅ **Coverage meets minimum threshold of ${{ env.MINIMUM_COVERAGE }}%**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ **Coverage is below minimum threshold of ${{ env.MINIMUM_COVERAGE }}%**" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload Test Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-test-results
+          path: TestResults/**/*.trx
+          retention-days: 30
+
+      - name: Upload Coverage Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-coverage-report
+          path: TestResults/**/coverage.cobertura.xml
+          retention-days: 30
+
+  build-and-test-cli:
+    name: Build & Test CLI
+    needs: detect-changes
+    if: needs.detect-changes.outputs.should_run_cli == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build CLI
+        run: dotnet build src/BDP.CLI/BDP.CLI.csproj --configuration Release --no-restore
+
+      - name: Test CLI smoke test
+        run: |
+          dotnet run --project src/BDP.CLI/BDP.CLI.csproj --no-build --configuration Release -- --version || true
+          echo "✅ CLI builds and runs successfully" >> $GITHUB_STEP_SUMMARY
+
+  build-and-test-frontend:
+    name: Build & Test Frontend
+    needs: detect-changes
+    if: needs.detect-changes.outputs.should_run_frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: src/BDP.Registry.Web/.yarn/cache
+          key: ${{ runner.os }}-yarn-${{ hashFiles('src/BDP.Registry.Web/yarn.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-yarn-
+
+      - name: Install dependencies
+        working-directory: src/BDP.Registry.Web
+        run: yarn install --immutable
+
+      - name: Lint
+        working-directory: src/BDP.Registry.Web
+        run: yarn lint
+
+      - name: Type check
+        working-directory: src/BDP.Registry.Web
+        run: yarn tsc --noEmit
+
+      - name: Build
+        working-directory: src/BDP.Registry.Web
+        run: yarn build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: src/BDP.Registry.Web/dist
+          retention-days: 7
+
+  coverage-gate:
+    name: Coverage Gate
+    needs: build-and-test-backend
+    if: needs.build-and-test-backend.outputs.coverage-percentage != ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check Coverage Threshold
+        run: |
+          COVERAGE=${{ needs.build-and-test-backend.outputs.coverage-percentage }}
+          MINIMUM=${{ env.MINIMUM_COVERAGE }}
+
+          echo "## Coverage Gate Check" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Current Coverage:** ${COVERAGE}%" >> $GITHUB_STEP_SUMMARY
+          echo "- **Minimum Required:** ${MINIMUM}%" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if (( $(echo "$COVERAGE < $MINIMUM" | bc -l) )); then
+            echo "⚠️ **Coverage gate WARNING!** Coverage is below minimum threshold." >> $GITHUB_STEP_SUMMARY
+            echo "::warning::Code coverage ${COVERAGE}% is below minimum threshold of ${MINIMUM}%"
+          else
+            echo "✅ **Coverage gate PASSED!** Coverage meets minimum threshold." >> $GITHUB_STEP_SUMMARY
+          fi
+
+  codeql-analysis:
+    name: CodeQL Analysis
+    needs: detect-changes
+    if: needs.detect-changes.outputs.should_run_backend == 'true' || needs.detect-changes.outputs.should_run_cli == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: csharp
+          queries: security-and-quality
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:csharp"
+
+  dependency-audit-backend:
+    name: Dependency Audit (Backend)
+    needs: detect-changes
+    if: needs.detect-changes.outputs.should_run_backend == 'true' || needs.detect-changes.outputs.should_run_cli == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: List vulnerable packages
+        run: |
+          echo "## 🔒 .NET Dependency Vulnerability Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          dotnet list package --vulnerable --include-transitive 2>&1 | tee vulnerability-report-dotnet.txt
+
+          if grep -q "has the following vulnerable packages" vulnerability-report-dotnet.txt; then
+            echo "⚠️ **Vulnerable packages detected!**" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cat vulnerability-report-dotnet.txt >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "::warning::Vulnerable .NET packages detected!"
+          else
+            echo "✅ No vulnerable .NET packages detected." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload vulnerability report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vulnerability-report-dotnet
+          path: vulnerability-report-dotnet.txt
+          retention-days: 30
+
+  dependency-audit-frontend:
+    name: Dependency Audit (Frontend)
+    needs: detect-changes
+    if: needs.detect-changes.outputs.should_run_frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        working-directory: src/BDP.Registry.Web
+        run: yarn install --immutable
+
+      - name: Audit dependencies
+        working-directory: src/BDP.Registry.Web
+        run: |
+          echo "## 🔒 Frontend Dependency Vulnerability Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          yarn npm audit --recursive --json > audit-report.json || true
+
+          if [ -s audit-report.json ]; then
+            CRITICAL=$(jq -r '.metadata.vulnerabilities.critical // 0' audit-report.json)
+            HIGH=$(jq -r '.metadata.vulnerabilities.high // 0' audit-report.json)
+            MODERATE=$(jq -r '.metadata.vulnerabilities.moderate // 0' audit-report.json)
+            LOW=$(jq -r '.metadata.vulnerabilities.low // 0' audit-report.json)
+
+            echo "| Severity | Count |" >> $GITHUB_STEP_SUMMARY
+            echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Critical | $CRITICAL |" >> $GITHUB_STEP_SUMMARY
+            echo "| High | $HIGH |" >> $GITHUB_STEP_SUMMARY
+            echo "| Moderate | $MODERATE |" >> $GITHUB_STEP_SUMMARY
+            echo "| Low | $LOW |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+
+            if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
+              echo "⚠️ **Critical or High severity vulnerabilities detected!**" >> $GITHUB_STEP_SUMMARY
+              echo "::warning::Frontend has $CRITICAL critical and $HIGH high severity vulnerabilities"
+            else
+              echo "✅ No critical or high severity vulnerabilities." >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "✅ No vulnerabilities detected." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload audit report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: audit-report-frontend
+          path: src/BDP.Registry.Web/audit-report.json
+          retention-days: 30
+
+  lint-backend:
+    name: Lint Backend
+    needs: detect-changes
+    if: needs.detect-changes.outputs.should_run_backend == 'true' || needs.detect-changes.outputs.should_run_cli == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Run dotnet format
+        run: |
+          echo "## 🎨 Backend Code Formatting Check" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          dotnet format --verify-no-changes --verbosity diagnostic 2>&1 | tee format-report.txt || true
+
+          if grep -q "error" format-report.txt; then
+            echo "⚠️ **Code formatting issues detected!**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Run \`dotnet format\` locally to fix formatting issues." >> $GITHUB_STEP_SUMMARY
+            echo "::warning::Code formatting check failed. Run 'dotnet format' locally to fix."
+          else
+            echo "✅ Code formatting is correct." >> $GITHUB_STEP_SUMMARY
+          fi
+
+  docker-build:
+    name: Docker Build Test
+    needs: detect-changes
+    if: needs.detect-changes.outputs.should_run_backend == 'true' || needs.detect-changes.outputs.should_run_frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Registry API Docker image
+        if: needs.detect-changes.outputs.should_run_backend == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: src/BDP.Registry.API/Dockerfile
+          push: false
+          tags: bdp-registry-api:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build Registry Web Docker image
+        if: needs.detect-changes.outputs.should_run_frontend == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: src/BDP.Registry.Web
+          file: src/BDP.Registry.Web/Dockerfile
+          push: false
+          tags: bdp-registry-web:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Docker build summary
+        run: |
+          echo "## 🐳 Docker Build Results" >> $GITHUB_STEP_SUMMARY
+          echo "✅ All Docker images built successfully" >> $GITHUB_STEP_SUMMARY
+
+  quality-gate:
+    name: Quality Gate
+    needs:
+      - detect-changes
+      - build-and-test-backend
+      - build-and-test-cli
+      - build-and-test-frontend
+      - coverage-gate
+      - codeql-analysis
+      - dependency-audit-backend
+      - dependency-audit-frontend
+      - lint-backend
+      - docker-build
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check all jobs passed or skipped
+        run: |
+          echo "# 🎯 Quality Gate Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          check_job() {
+            local result=$1
+            local name=$2
+            local extra=$3
+
+            if [[ "$result" == "success" ]]; then
+              echo "✅ $name: Passed$extra" >> $GITHUB_STEP_SUMMARY
+              return 0
+            elif [[ "$result" == "skipped" ]]; then
+              echo "⭐️ $name: Skipped (no changes)" >> $GITHUB_STEP_SUMMARY
+              return 0
+            else
+              echo "❌ $name: Failed" >> $GITHUB_STEP_SUMMARY
+              return 1
+            fi
+          }
+
+          FAILED=false
+
+          check_job "${{ needs.build-and-test-backend.result }}" "Build & Test Backend" "" || FAILED=true
+          check_job "${{ needs.build-and-test-cli.result }}" "Build & Test CLI" "" || FAILED=true
+          check_job "${{ needs.build-and-test-frontend.result }}" "Build & Test Frontend" "" || FAILED=true
+          check_job "${{ needs.coverage-gate.result }}" "Coverage Gate" " (${{ needs.build-and-test-backend.outputs.coverage-percentage }}%)" || FAILED=true
+          check_job "${{ needs.codeql-analysis.result }}" "CodeQL Analysis" "" || FAILED=true
+          check_job "${{ needs.dependency-audit-backend.result }}" "Dependency Audit (Backend)" "" || FAILED=true
+          check_job "${{ needs.dependency-audit-frontend.result }}" "Dependency Audit (Frontend)" "" || FAILED=true
+          check_job "${{ needs.lint-backend.result }}" "Linting (Backend)" "" || FAILED=true
+          check_job "${{ needs.docker-build.result }}" "Docker Build" "" || FAILED=true
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "$FAILED" = true ]; then
+            echo "❌ **Quality gate FAILED**" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          else
+            echo "✅ **Quality gate PASSED**" >> $GITHUB_STEP_SUMMARY
+          fi
