@@ -54,15 +54,15 @@ jobs:
           echo "Changed files:"
           echo "$CHANGED_FILES"
 
-          # Check for backend changes (API, Domain, Application, Infrastructure)
+          # Check for backend changes (API, Domain, Application, Infrastructure, or their tests)
           BACKEND_CHANGED=false
-          if echo "$CHANGED_FILES" | grep -qE '^src/BDP\.(Registry\.API|Domain|Application|Infrastructure)/'; then
+          if echo "$CHANGED_FILES" | grep -qE '^(src/BDP\.(Registry\.API|Domain|Application|Infrastructure)/|test/BDP\.(Registry\.API|Domain|Application|Infrastructure)\.Tests/)'; then
             BACKEND_CHANGED=true
           fi
 
-          # Check for CLI changes
+          # Check for CLI changes (CLI or its tests)
           CLI_CHANGED=false
-          if echo "$CHANGED_FILES" | grep -qE '^src/BDP\.(CLI|Domain|Application|Infrastructure)/'; then
+          if echo "$CHANGED_FILES" | grep -qE '^(src/BDP\.(CLI|Domain|Application|Infrastructure)/|test/BDP\.(CLI|Domain|Application|Infrastructure)\.Tests/)'; then
             CLI_CHANGED=true
           fi
 
@@ -206,10 +206,29 @@ jobs:
       - name: Build CLI
         run: dotnet build src/BDP.CLI/BDP.CLI.csproj --configuration Release --no-restore
 
+      - name: Run CLI Tests
+        run: |
+          if [ -d "test/BDP.CLI.Tests" ]; then
+            dotnet test test/BDP.CLI.Tests/BDP.CLI.Tests.csproj \
+              --configuration Release \
+              --verbosity normal \
+              --logger "trx;LogFileName=cli-test-results.trx"
+          else
+            echo "⚠️ No CLI tests found, skipping test execution" >> $GITHUB_STEP_SUMMARY
+          fi
+
       - name: Test CLI smoke test
         run: |
           dotnet run --project src/BDP.CLI/BDP.CLI.csproj --no-build --configuration Release -- --version || true
           echo "✅ CLI builds and runs successfully" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload CLI Test Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: cli-test-results
+          path: TestResults/**/*.trx
+          retention-days: 30
 
   build-and-test-frontend:
     name: Build & Test Frontend
@@ -227,10 +246,12 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
-      - name: Cache dependencies
+      - name: Cache Yarn dependencies
         uses: actions/cache@v4
         with:
-          path: src/BDP.Registry.Web/.yarn/cache
+          path: |
+            src/BDP.Registry.Web/.yarn/cache
+            src/BDP.Registry.Web/.yarn/unplugged
           key: ${{ runner.os }}-yarn-${{ hashFiles('src/BDP.Registry.Web/yarn.lock') }}
           restore-keys: |
             ${{ runner.os }}-yarn-
@@ -245,47 +266,53 @@ jobs:
 
       - name: Type check
         working-directory: src/BDP.Registry.Web
-        run: yarn tsc --noEmit
+        run: yarn type-check
 
       - name: Build
         working-directory: src/BDP.Registry.Web
         run: yarn build
 
-      - name: Upload build artifacts
+      - name: Run tests
+        working-directory: src/BDP.Registry.Web
+        run: yarn test --coverage
+
+      - name: Upload test results
         uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: frontend-build
-          path: src/BDP.Registry.Web/dist
-          retention-days: 7
+          name: frontend-test-results
+          path: src/BDP.Registry.Web/coverage
+          retention-days: 30
 
   coverage-gate:
     name: Coverage Gate
-    needs: build-and-test-backend
-    if: needs.build-and-test-backend.outputs.coverage-percentage != ''
+    needs:
+      - detect-changes
+      - build-and-test-backend
+    if: needs.detect-changes.outputs.should_run_backend == 'true'
     runs-on: ubuntu-latest
     steps:
-      - name: Check Coverage Threshold
+      - name: Check coverage threshold
         run: |
           COVERAGE=${{ needs.build-and-test-backend.outputs.coverage-percentage }}
-          MINIMUM=${{ env.MINIMUM_COVERAGE }}
 
-          echo "## Coverage Gate Check" >> $GITHUB_STEP_SUMMARY
+          echo "## 🎯 Coverage Gate Check" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Current Coverage:** ${COVERAGE}%" >> $GITHUB_STEP_SUMMARY
-          echo "- **Minimum Required:** ${MINIMUM}%" >> $GITHUB_STEP_SUMMARY
+          echo "Coverage: **${COVERAGE}%**" >> $GITHUB_STEP_SUMMARY
+          echo "Minimum Required: **${{ env.MINIMUM_COVERAGE }}%**" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if (( $(echo "$COVERAGE < $MINIMUM" | bc -l) )); then
-            echo "⚠️ **Coverage gate WARNING!** Coverage is below minimum threshold." >> $GITHUB_STEP_SUMMARY
-            echo "::warning::Code coverage ${COVERAGE}% is below minimum threshold of ${MINIMUM}%"
+          if (( $(echo "$COVERAGE >= ${{ env.MINIMUM_COVERAGE }}" | bc -l) )); then
+            echo "✅ **Coverage gate PASSED**" >> $GITHUB_STEP_SUMMARY
+            exit 0
           else
-            echo "✅ **Coverage gate PASSED!** Coverage meets minimum threshold." >> $GITHUB_STEP_SUMMARY
+            echo "❌ **Coverage gate FAILED**" >> $GITHUB_STEP_SUMMARY
+            echo "::error::Code coverage ${COVERAGE}% is below minimum threshold of ${{ env.MINIMUM_COVERAGE }}%"
+            exit 1
           fi
 
   codeql-analysis:
     name: CodeQL Analysis
-    needs: detect-changes
-    if: needs.detect-changes.outputs.should_run_backend == 'true' || needs.detect-changes.outputs.should_run_cli == 'true'
     runs-on: ubuntu-latest
     permissions:
       security-events: write
@@ -294,24 +321,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: 'csharp,javascript-typescript'
+          queries: security-and-quality
+
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
-        with:
-          languages: csharp
-          queries: security-and-quality
-
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@v3
+      - name: Restore and Build
+        run: |
+          dotnet restore
+          dotnet build --configuration Release --no-restore
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
         with:
-          category: "/language:csharp"
+          category: "/language:multi"
 
   dependency-audit-backend:
     name: Dependency Audit (Backend)
