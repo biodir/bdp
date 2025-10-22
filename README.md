@@ -1,3 +1,3 @@
-# Bioinformatics dependency manager
+# Bioinformatics Dependencies Platform 
 
-Aim of this project is to create versionable dependency manager that enables reproducible bioinformatics repositories.
+Aim of this project is to create versionable dependency platform + manager that enables reproducible bioinformatics repositories.
