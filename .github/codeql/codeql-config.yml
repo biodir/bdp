@@ -1,0 +1,5 @@
+name: "CodeQL Config with Suppressions"
+
+query-filters:
+  - exclude:
+      id: cs/catch-of-all-exceptions  # Generic catch clause for C#
