@@ -57,6 +57,13 @@ jobs:
           echo "Changed files:"
           echo "$CHANGED_FILES"
 
+          # Check if CI workflow itself was changed - if so, run everything
+          CI_WORKFLOW_CHANGED=false
+          if echo "$CHANGED_FILES" | grep -qE '^\.github/workflows/.*\.ya?ml$'; then
+            CI_WORKFLOW_CHANGED=true
+            echo "⚠️ CI workflow file changed - running all jobs"
+          fi
+
           # Check for backend changes (API, Domain, Application, Infrastructure, or their tests)
           BACKEND_CHANGED=false
           if echo "$CHANGED_FILES" | grep -qE '^(src/BDP\.(Registry\.API|Domain|Application|Infrastructure)/|test/BDP\.(Registry\.API|Domain|Application|Infrastructure)\.Tests/)'; then
@@ -72,6 +79,13 @@ jobs:
           # Check for frontend changes
           FRONTEND_CHANGED=false
           if echo "$CHANGED_FILES" | grep -qE '^src/BDP\.Registry\.Web/'; then
+            FRONTEND_CHANGED=true
+          fi
+
+          # If CI workflow changed, force all checks to run
+          if [ "$CI_WORKFLOW_CHANGED" = true ]; then
+            BACKEND_CHANGED=true
+            CLI_CHANGED=true
             FRONTEND_CHANGED=true
           fi
 
