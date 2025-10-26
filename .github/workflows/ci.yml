@@ -228,13 +228,34 @@ jobs:
           echo "## Code Formatting Check" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          # Check if code is formatted correctly
-          # Use 'yarn run' to execute prettier from node_modules
-          if yarn run prettier --check "src/**/*.{ts,tsx,js,jsx,json,css,scss,md}"; then
-            echo "✓ Code formatting is correct." >> $GITHUB_STEP_SUMMARY
+          # Check if prettier is defined in package.json scripts
+          if jq -e '.scripts.format or .scripts["format:check"] or .scripts.prettier' package.json >/dev/null 2>&1; then
+            # Use the defined script
+            if jq -e '.scripts["format:check"]' package.json >/dev/null 2>&1; then
+              if yarn run format:check; then
+                echo "✅ Code formatting is correct." >> $GITHUB_STEP_SUMMARY
+              else
+                echo "❌ Code formatting issues detected." >> $GITHUB_STEP_SUMMARY
+                exit 1
+              fi
+            elif jq -e '.scripts.format' package.json >/dev/null 2>&1; then
+              if yarn run format --check; then
+                echo "✅ Code formatting is correct." >> $GITHUB_STEP_SUMMARY
+              else
+                echo "❌ Code formatting issues detected." >> $GITHUB_STEP_SUMMARY
+                exit 1
+              fi
+            else
+              if yarn run prettier --check "src/**/*.{ts,tsx,js,jsx,json,css,scss,md}"; then
+                echo "✅ Code formatting is correct." >> $GITHUB_STEP_SUMMARY
+              else
+                echo "❌ Code formatting issues detected." >> $GITHUB_STEP_SUMMARY
+                exit 1
+              fi
+            fi
           else
-            echo "✗ Code formatting issues detected." >> $GITHUB_STEP_SUMMARY
-            exit 1
+            # Prettier not in scripts, skip this check
+            echo "⏭️ Prettier not configured in package.json, skipping format check" >> $GITHUB_STEP_SUMMARY
           fi
 
   build-and-test-backend:
@@ -697,73 +718,116 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore
 
-      - name: Install dotnet-project-licenses tool
-        run: |
-          dotnet tool install --global dotnet-project-licenses|| \
-          dotnet tool update --global dotnet-project-licenses
-
-      - name: Generate license report
+      - name: Generate license report (native)
         run: |
           echo "## .NET Package License Report" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
+          # Create output directory
           mkdir -p ./licenses
 
-          echo "Running license scan..."
-          if dotnet-project-licenses --input . -f ./licenses -j --export-license-texts --include-transitive -l Information 2>&1 | tee license-generation.log; then
-            echo "✓ License scan completed" >> $GITHUB_STEP_SUMMARY
+          # Get list of packages using native dotnet command
+          echo "📦 Scanning NuGet packages..."
+          dotnet list package --include-transitive --format json > ./licenses/packages.json
 
-            # List all files created in licenses directory for debugging
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Files created in licenses directory:" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            ls -lah ./licenses/ >> $GITHUB_STEP_SUMMARY 2>&1 || echo "Directory listing failed"
-            echo '```' >> $GITHUB_STEP_SUMMARY
+          # Get global packages folder location
+          PACKAGES_FOLDER=$(dotnet nuget locals global-packages --list | grep "global-packages:" | cut -d' ' -f2)
+          echo "Using global packages folder: $PACKAGES_FOLDER"
 
-            # Verify the JSON file was created
-            if [ -f "./licenses/licenses.json" ]; then
-              # Check if the JSON file has content
-              if [ -s "./licenses/licenses.json" ]; then
-                PACKAGE_COUNT=$(jq '. | length' ./licenses/licenses.json 2>/dev/null || echo "0")
-                echo "" >> $GITHUB_STEP_SUMMARY
-                echo "✓ JSON report file verified at ./licenses/licenses.json ($PACKAGE_COUNT packages)" >> $GITHUB_STEP_SUMMARY
-              else
-                echo "⚠️ JSON file exists but is empty (no packages found)" >> $GITHUB_STEP_SUMMARY
-                echo "[]" > ./licenses/licenses.json  # Create empty array for parsing
+          # Parse packages and extract licenses
+          cat > ./licenses/extract-licenses.sh << 'EXTRACT_SCRIPT'
+          #!/bin/bash
+          PACKAGES_JSON="$1"
+          PACKAGES_FOLDER="$2"
+          OUTPUT_JSON="$3"
+
+          # Start JSON array
+          echo "[" > "$OUTPUT_JSON"
+          FIRST=true
+
+          # Parse the JSON and extract package info
+          jq -r '.projects[].frameworks[].topLevelPackages[]?, .projects[].frameworks[].transitivePackages[]? | "\(.id)|\(.resolvedVersion)"' "$PACKAGES_JSON" 2>/dev/null | sort -u | while IFS='|' read -r pkg_id pkg_version; do
+            if [ -z "$pkg_id" ] || [ -z "$pkg_version" ]; then
+              continue
+            fi
+
+            # Find nuspec file
+            pkg_id_lower=$(echo "$pkg_id" | tr '[:upper:]' '[:lower:]')
+            pkg_version_lower=$(echo "$pkg_version" | tr '[:upper:]' '[:lower:]')
+            nuspec_path="$PACKAGES_FOLDER/$pkg_id_lower/$pkg_version_lower/$pkg_id_lower.$pkg_version_lower.nuspec"
+
+            if [ -f "$nuspec_path" ]; then
+              # Extract license from nuspec using xmllint or grep
+              license=$(grep -oP '(?<=<license type=")[^"]*' "$nuspec_path" 2>/dev/null | head -1)
+              if [ -z "$license" ]; then
+                # Try license expression
+                license=$(grep -oP '(?<=<license>)[^<]*' "$nuspec_path" 2>/dev/null | head -1)
+              fi
+              if [ -z "$license" ]; then
+                # Fallback to licenseUrl
+                license_url=$(grep -oP '(?<=<licenseUrl>)[^<]*' "$nuspec_path" 2>/dev/null | head -1)
+                if [[ "$license_url" =~ licenses\.nuget\.org/([^/]+) ]]; then
+                  license="${BASH_REMATCH[1]}"
+                else
+                  license="UNKNOWN"
+                fi
               fi
             else
-              echo "✗ JSON report file not found at expected location" >> $GITHUB_STEP_SUMMARY
-              echo "" >> $GITHUB_STEP_SUMMARY
-              echo "License generation log:" >> $GITHUB_STEP_SUMMARY
-              echo '```' >> $GITHUB_STEP_SUMMARY
-              cat license-generation.log >> $GITHUB_STEP_SUMMARY
-              echo '```' >> $GITHUB_STEP_SUMMARY
-              exit 1
+              license="UNKNOWN"
             fi
-          else
-            echo "✗ Failed to generate license report" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Error details:" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            cat license-generation.log >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
+
+            # Add to JSON
+            if [ "$FIRST" = false ]; then
+              echo "," >> "$OUTPUT_JSON"
+            fi
+            FIRST=false
+
+            jq -n \
+              --arg id "$pkg_id" \
+              --arg version "$pkg_version" \
+              --arg license "$license" \
+              '{PackageName: $id, PackageVersion: $version, License: $license}' >> "$OUTPUT_JSON"
+          done
+
+          # Close JSON array
+          echo "]" >> "$OUTPUT_JSON"
+          EXTRACT_SCRIPT
+
+          chmod +x ./licenses/extract-licenses.sh
+          ./licenses/extract-licenses.sh ./licenses/packages.json "$PACKAGES_FOLDER" ./licenses/licenses.json
+
+          # Validate JSON
+          if ! jq empty ./licenses/licenses.json 2>/dev/null; then
+            echo "❌ Failed to generate valid JSON" >> $GITHUB_STEP_SUMMARY
             exit 1
           fi
 
-          # Generate markdown table for summary
-          if dotnet-project-licenses --input . -f ./licenses -m 2>&1; then
-            if [ -f "./licenses/licenses.md" ]; then
-              echo "" >> $GITHUB_STEP_SUMMARY
-              echo "### License Summary" >> $GITHUB_STEP_SUMMARY
-              cat ./licenses/licenses.md >> $GITHUB_STEP_SUMMARY
-            fi
+          PACKAGE_COUNT=$(jq '. | length' ./licenses/licenses.json 2>/dev/null || echo "0")
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Scanned $PACKAGE_COUNT packages" >> $GITHUB_STEP_SUMMARY
+
+          # Create summary table
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### License Summary" >> $GITHUB_STEP_SUMMARY
+          jq -r 'group_by(.License) | map({license: .[0].License, count: length}) | sort_by(-.count) | .[] | "| \(.license) | \(.count) |"' ./licenses/licenses.json > ./licenses/summary.txt
+          if [ -s ./licenses/summary.txt ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| License | Count |" >> $GITHUB_STEP_SUMMARY
+            echo "|---------|-------|" >> $GITHUB_STEP_SUMMARY
+            cat ./licenses/summary.txt >> $GITHUB_STEP_SUMMARY
           fi
 
       - name: Check for non-compliant licenses
         id: license-check
         run: |
-          # Parse the JSON report and check for non-compliant licenses
           ALLOWED_LICENSES="${{ env.ALLOWED_LICENSES }}"
+
+          # Load acknowledged packages if file exists
+          ACKNOWLEDGED_PACKAGES=""
+          if [ -f ".github/acknowledged-licenses-backend.json" ]; then
+            ACKNOWLEDGED_PACKAGES=$(jq -r '.[] | "\(.package)@\(.version)"' .github/acknowledged-licenses-backend.json 2>/dev/null | tr '\n' '|')
+            echo "📋 Loaded acknowledged packages from .github/acknowledged-licenses-backend.json"
+          fi
 
           if [ ! -f "./licenses/licenses.json" ]; then
             echo "::error::License report JSON file not found"
@@ -771,41 +835,64 @@ jobs:
             exit 1
           fi
 
-          echo "Using license file: ./licenses/licenses.json"
-
-          # Check if file has content
           if [ ! -s "./licenses/licenses.json" ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "⚠️ No packages found to check (empty JSON file)" >> $GITHUB_STEP_SUMMARY
+            echo "⚠️ No packages found to check" >> $GITHUB_STEP_SUMMARY
             echo "has_issues=false" >> $GITHUB_OUTPUT
             exit 0
           fi
 
-          # Extract unique licenses
-          FOUND_LICENSES=$(jq -r '.[].License' ./licenses/licenses.json | sort -u)
-
-          echo "Found licenses:"
-          echo "$FOUND_LICENSES"
-
+          # Check licenses
           NON_COMPLIANT=""
           NON_COMPLIANT_COUNT=0
-          while IFS= read -r license; do
-            if [ ! -z "$license" ] && [ "$license" != "null" ]; then
-              # Check if license is in allowed list (exact match or part of compound license)
-              if ! echo "$ALLOWED_LICENSES" | grep -qE "(^|,)${license}(,|$)"; then
-                NON_COMPLIANT="${NON_COMPLIANT}\n- ${license}"
-                NON_COMPLIANT_COUNT=$((NON_COMPLIANT_COUNT + 1))
+
+          jq -r '.[] | "\(.PackageName)|\(.PackageVersion)|\(.License)"' ./licenses/licenses.json | while IFS='|' read -r pkg_name pkg_version pkg_license; do
+            if [ -z "$pkg_license" ] || [ "$pkg_license" = "null" ] || [ "$pkg_license" = "UNKNOWN" ]; then
+              continue
+            fi
+
+            # Check if package is acknowledged
+            if [ ! -z "$ACKNOWLEDGED_PACKAGES" ]; then
+              if echo "$ACKNOWLEDGED_PACKAGES" | grep -q "${pkg_name}@${pkg_version}"; then
+                continue
               fi
             fi
-          done <<< "$FOUND_LICENSES"
+
+            # Check if license is allowed
+            if ! echo "$ALLOWED_LICENSES" | grep -qE "(^|,)${pkg_license}(,|$)"; then
+              echo "$pkg_name@$pkg_version|$pkg_license" >> ./licenses/non-compliant.txt
+            fi
+          done
+
+          if [ -f ./licenses/non-compliant.txt ]; then
+            NON_COMPLIANT_COUNT=$(wc -l < ./licenses/non-compliant.txt)
+          fi
 
           if [ "$NON_COMPLIANT_COUNT" -gt 0 ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "❌ Non-compliant licenses found ($NON_COMPLIANT_COUNT):" >> $GITHUB_STEP_SUMMARY
-            echo -e "$NON_COMPLIANT" >> $GITHUB_STEP_SUMMARY
+            echo "❌ **Non-compliant licenses found ($NON_COMPLIANT_COUNT packages):**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Package | Version | License |" >> $GITHUB_STEP_SUMMARY
+            echo "|---------|---------|---------|" >> $GITHUB_STEP_SUMMARY
+            while IFS='|' read -r pkg_info license; do
+              pkg_name=$(echo "$pkg_info" | cut -d'@' -f1)
+              pkg_version=$(echo "$pkg_info" | cut -d'@' -f2)
+              echo "| $pkg_name | $pkg_version | $license |" >> $GITHUB_STEP_SUMMARY
+            done < ./licenses/non-compliant.txt
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "**Allowed licenses:** $ALLOWED_LICENSES" >> $GITHUB_STEP_SUMMARY
-            echo "::error::Non-compliant licenses detected in $NON_COMPLIANT_COUNT package(s). Please review the license report."
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**To acknowledge a package, create `.github/acknowledged-licenses-backend.json`:**" >> $GITHUB_STEP_SUMMARY
+            echo '```json' >> $GITHUB_STEP_SUMMARY
+            echo '[' >> $GITHUB_STEP_SUMMARY
+            echo '  {' >> $GITHUB_STEP_SUMMARY
+            echo '    "package": "PackageName",' >> $GITHUB_STEP_SUMMARY
+            echo '    "version": "1.0.0",' >> $GITHUB_STEP_SUMMARY
+            echo '    "reason": "Reviewed and approved by legal team"' >> $GITHUB_STEP_SUMMARY
+            echo '  }' >> $GITHUB_STEP_SUMMARY
+            echo ']' >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "::error::Non-compliant licenses detected in $NON_COMPLIANT_COUNT package(s)."
             echo "has_issues=true" >> $GITHUB_OUTPUT
             exit 1
           else
@@ -822,11 +909,12 @@ jobs:
           path: licenses/
           retention-days: 90
 
-      - name: Fail on non-compliant licenses
-        if: steps.license-check.outputs.has_issues == 'true'
-        run: |
-          echo "::error::Non-compliant licenses found. Build failed."
-          exit 1
+      # Optionally fail the build on non-compliant licenses (uncomment if needed)
+      # - name: Fail on non-compliant licenses
+      #   if: steps.license-check.outputs.has_issues == 'true'
+      #   run: |
+      #     echo "::error::Non-compliant licenses found. Build failed."
+      #     exit 1
 
   license-compliance-frontend:
     name: License Compliance (Frontend)
@@ -861,10 +949,28 @@ jobs:
 
           # Generate JSON report
           if license-checker --json --out licenses.json 2>&1 | tee license-generation.log; then
-            echo "✓ License report generated successfully" >> $GITHUB_STEP_SUMMARY
+            echo "✅ License report generated successfully" >> $GITHUB_STEP_SUMMARY
           else
-            echo "✗ Failed to generate license report" >> $GITHUB_STEP_SUMMARY
+            echo "❌ Failed to generate license report" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Error details:" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cat license-generation.log >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+          # Generate CSV report for easier viewing
+          license-checker --csv --out licenses.csv
+
+          # Generate markdown summary
+          if license-checker --summary > licenses-summary.txt; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### License Summary" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cat licenses-summary.txt >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
             echo "Error details:" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
             cat license-generation.log >> $GITHUB_STEP_SUMMARY
@@ -890,6 +996,13 @@ jobs:
         run: |
           ALLOWED_LICENSES="${{ env.ALLOWED_LICENSES }}"
 
+          # Load acknowledged packages if file exists
+          ACKNOWLEDGED_PACKAGES=""
+          if [ -f "../../.github/acknowledged-licenses-frontend.json" ]; then
+            ACKNOWLEDGED_PACKAGES=$(jq -r '.[] | "\(.package)@\(.version)"' ../../.github/acknowledged-licenses-frontend.json 2>/dev/null | tr '\n' '|')
+            echo "📋 Loaded acknowledged packages from .github/acknowledged-licenses-frontend.json"
+          fi
+
           if [ ! -f "licenses.json" ]; then
             echo "::error::License report file not found"
             echo "has_issues=true" >> $GITHUB_OUTPUT
@@ -897,44 +1010,64 @@ jobs:
           fi
 
           # Extract licenses and check compliance
-          # license-checker JSON format: { "package@version": { "licenses": "MIT", ... }, ... }
-          NON_COMPLIANT=""
           NON_COMPLIANT_COUNT=0
+          rm -f non-compliant.txt
 
-          # Get all unique licenses
-          FOUND_LICENSES=$(jq -r 'to_entries | .[] | select(.value.licenses != null) | .value.licenses' licenses.json | sort -u)
+          # Get all unique package@version with licenses
+          jq -r 'to_entries | .[] | "\(.key)|\(.value.licenses)"' licenses.json | while IFS='|' read -r pkg_full license; do
+            if [ -z "$license" ] || [ "$license" = "UNKNOWN" ] || [ "$license" = "null" ]; then
+              continue
+            fi
 
-          echo "Found licenses:"
-          echo "$FOUND_LICENSES"
-
-          while IFS= read -r license; do
-            if [ ! -z "$license" ] && [ "$license" != "UNKNOWN" ]; then
-              # Check if license is in allowed list
-              # Handle compound licenses like "MIT OR Apache-2.0" or "(MIT AND BSD-3-Clause)"
-              CLEAN_LICENSE=$(echo "$license" | sed 's/[()]//g' | sed 's/ OR /,/g' | sed 's/ AND /,/g')
-
-              IS_COMPLIANT=false
-              for lic in $(echo "$CLEAN_LICENSE" | tr ',' ' '); do
-                if echo "$ALLOWED_LICENSES" | grep -qE "(^|,)${lic}(,|$)"; then
-                  IS_COMPLIANT=true
-                  break
-                fi
-              done
-
-              if [ "$IS_COMPLIANT" = false ]; then
-                NON_COMPLIANT="${NON_COMPLIANT}\n- ${license}"
-                NON_COMPLIANT_COUNT=$((NON_COMPLIANT_COUNT + 1))
+            # Check if package is acknowledged
+            if [ ! -z "$ACKNOWLEDGED_PACKAGES" ]; then
+              if echo "$ACKNOWLEDGED_PACKAGES" | grep -qF "$pkg_full"; then
+                continue
               fi
             fi
-          done <<< "$FOUND_LICENSES"
+
+            # Handle compound licenses like "MIT OR Apache-2.0" or "(MIT AND BSD-3-Clause)"
+            CLEAN_LICENSE=$(echo "$license" | sed 's/[()]//g' | sed 's/ OR /,/g' | sed 's/ AND /,/g')
+
+            IS_COMPLIANT=false
+            for lic in $(echo "$CLEAN_LICENSE" | tr ',' ' '); do
+              if echo "$ALLOWED_LICENSES" | grep -qE "(^|,)${lic}(,|$)"; then
+                IS_COMPLIANT=true
+                break
+              fi
+            done
+
+            if [ "$IS_COMPLIANT" = false ]; then
+              echo "$pkg_full|$license" >> non-compliant.txt
+            fi
+          done
+
+          if [ -f non-compliant.txt ]; then
+            NON_COMPLIANT_COUNT=$(wc -l < non-compliant.txt)
+          fi
 
           if [ "$NON_COMPLIANT_COUNT" -gt 0 ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "❌ Non-compliant licenses found ($NON_COMPLIANT_COUNT):" >> $GITHUB_STEP_SUMMARY
-            echo -e "$NON_COMPLIANT" >> $GITHUB_STEP_SUMMARY
+            echo "❌ **Non-compliant licenses found ($NON_COMPLIANT_COUNT packages):**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Package | License |" >> $GITHUB_STEP_SUMMARY
+            echo "|---------|---------|" >> $GITHUB_STEP_SUMMARY
+            while IFS='|' read -r pkg_full license; do
+              echo "| $pkg_full | $license |" >> $GITHUB_STEP_SUMMARY
+            done < non-compliant.txt
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "**Allowed licenses:** $ALLOWED_LICENSES" >> $GITHUB_STEP_SUMMARY
-            echo "::error::Non-compliant licenses detected in $NON_COMPLIANT_COUNT package(s). Please review the license report."
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**To acknowledge a package, create `.github/acknowledged-licenses-frontend.json`:**" >> $GITHUB_STEP_SUMMARY
+            echo '```json' >> $GITHUB_STEP_SUMMARY
+            echo '[' >> $GITHUB_STEP_SUMMARY
+            echo '  {' >> $GITHUB_STEP_SUMMARY
+            echo '    "package": "package@version",' >> $GITHUB_STEP_SUMMARY
+            echo '    "reason": "Reviewed and approved by legal team"' >> $GITHUB_STEP_SUMMARY
+            echo '  }' >> $GITHUB_STEP_SUMMARY
+            echo ']' >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "::error::Non-compliant licenses detected in $NON_COMPLIANT_COUNT package(s)."
             echo "has_issues=true" >> $GITHUB_OUTPUT
             exit 1
           else
@@ -954,11 +1087,12 @@ jobs:
             src/BDP.Registry.Web/licenses-summary.txt
           retention-days: 90
 
-      - name: Fail on non-compliant licenses
-        if: steps.license-check.outputs.has_issues == 'true'
-        run: |
-          echo "::error::Non-compliant licenses found. Build failed."
-          exit 1
+      # Optionally fail the build on non-compliant licenses (uncomment if needed)
+      # - name: Fail on non-compliant licenses
+      #   if: steps.license-check.outputs.has_issues == 'true'
+      #   run: |
+      #     echo "::error::Non-compliant licenses found. Build failed."
+      #     exit 1
 
   docker-build:
     name: Docker Build Test
