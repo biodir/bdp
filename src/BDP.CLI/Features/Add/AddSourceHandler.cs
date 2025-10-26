@@ -1,6 +1,6 @@
-using Spectre.Console;
 using BDP.Application.Interfaces;
 using BDP.Domain.Common;
+using Spectre.Console;
 
 namespace BDP.CLI.Features.Add;
 

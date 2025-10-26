@@ -1,7 +1,7 @@
 using System.Globalization;
+using BDP.Domain.Common;
 using Spectre.Console;
 using Spectre.Console.Cli;
-using BDP.Domain.Common;
 
 namespace BDP.CLI.Features.Cache;
 

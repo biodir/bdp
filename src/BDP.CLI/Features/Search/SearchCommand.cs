@@ -1,7 +1,7 @@
 using System.ComponentModel;
+using BDP.Application.Interfaces;
 using Spectre.Console;
 using Spectre.Console.Cli;
-using BDP.Application.Interfaces;
 
 namespace BDP.CLI.Features.Search;
 

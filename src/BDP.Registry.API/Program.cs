@@ -1,8 +1,10 @@
+using System;
 using System.Globalization;
-using BDP.Registry.API;
 using BDP.Registry.API.Common.Extensions;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Serilog;
 using Serilog.Events;
 
@@ -21,11 +23,11 @@ try
     builder.ConfigureSerilog();
     builder.AddRegistryDatabase();
     builder.AddHealthCheck();
+    builder.AddCORS();
 
     builder.Services.AddEndpointsApiExplorer();
     builder.Services.AddOpenAPI();
     builder.Services.AddProblemDetails();
-    builder.Services.AddCORS();
 
     var app = builder.Build();
 
@@ -36,7 +38,9 @@ try
         options.MessageTemplate = "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000}ms";
         options.EnrichDiagnosticContext = (diagnosticContext, httpContext) =>
         {
-            diagnosticContext.Set("RequestHost", httpContext.Request.Host.Value);
+            if (httpContext.Request.Host.HasValue)
+                diagnosticContext.Set("RequestHost", httpContext.Request.Host.Value);
+
             diagnosticContext.Set("RequestScheme", httpContext.Request.Scheme);
             diagnosticContext.Set("UserAgent", httpContext.Request.Headers["User-Agent"].ToString());
         };
@@ -56,7 +60,7 @@ try
 
     // NOTE: HTTPS redirection - Comment out for Docker/HTTP-only deployment
 
-    app.UseCors("AllowAll");
+    app.UseCors("DefaultPolicy");
     app.MapHealthChecks("/health");
 
     var api = app.MapGroup("/api/v1");

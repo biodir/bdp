@@ -1,3 +1,5 @@
+using Microsoft.Extensions.DependencyInjection;
+
 namespace BDP.Registry.API.Common.Extensions;
 
 internal static class ServiceCollectionExtensions
@@ -11,21 +13,6 @@ internal static class ServiceCollectionExtensions
                 Title = "BDP Registry API",
                 Version = "v1",
                 Description = "BDP Registry API"
-            });
-        });
-
-        return services;
-    }
-
-    internal static IServiceCollection AddCORS(this IServiceCollection services)
-    {
-        services.AddCors(options =>
-        {
-            options.AddPolicy("AllowAll", policy =>
-            {
-                policy.AllowAnyOrigin()
-                    .AllowAnyMethod()
-                    .AllowAnyHeader();
             });
         });
 

@@ -1,4 +1,4 @@
-﻿namespace BDP.CLI.Tests;
+namespace BDP.CLI.Tests;
 
 public class UnitTest1
 {

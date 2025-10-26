@@ -1,4 +1,4 @@
-﻿namespace BDP.Registry.API.Tests;
+namespace BDP.Registry.API.Tests;
 
 public class UnitTest1
 {

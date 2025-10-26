@@ -1,16 +1,16 @@
-﻿using Microsoft.Extensions.DependencyInjection;
-using Spectre.Console;
-using Spectre.Console.Cli;
-using BDP.CLI.Features.Init;
+using BDP.Application.Interfaces;
+using BDP.Application.Services;
+using BDP.CLI.DependencyInjection;
 using BDP.CLI.Features.Add;
+using BDP.CLI.Features.Cache;
+using BDP.CLI.Features.Init;
 using BDP.CLI.Features.Install;
 using BDP.CLI.Features.List;
 using BDP.CLI.Features.Search;
-using BDP.CLI.Features.Cache;
-using BDP.CLI.DependencyInjection;
-using BDP.Application.Interfaces;
-using BDP.Application.Services;
 using BDP.Infrastructure.Registry;
+using Microsoft.Extensions.DependencyInjection;
+using Spectre.Console;
+using Spectre.Console.Cli;
 
 var services = new ServiceCollection();
 

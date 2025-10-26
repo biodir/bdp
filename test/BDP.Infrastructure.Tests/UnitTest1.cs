@@ -1,4 +1,4 @@
-﻿namespace BDP.Infrastructure.Tests;
+namespace BDP.Infrastructure.Tests;
 
 public class UnitTest1
 {

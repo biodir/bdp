@@ -128,38 +128,49 @@ jobs:
       # dotnet format for code style
       - name: Run dotnet format (style)
         run: |
-          echo "## 🎨 Backend Code Formatting Check" >> $GITHUB_STEP_SUMMARY
+          echo "## Backend Code Formatting Check" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           # This will fail the job if formatting issues are found
-          dotnet format --verify-no-changes --verbosity diagnostic
-
-          echo "✅ Code formatting is correct." >> $GITHUB_STEP_SUMMARY
+          if dotnet format --verify-no-changes --verbosity diagnostic; then
+            echo "✓ Code formatting is correct." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✗ Code formatting issues detected." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Run \`dotnet format\` locally to fix formatting issues." >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
 
       # Run dotnet build with /WarnAsError to treat warnings as errors
       - name: Build with warnings as errors
         run: |
-          echo "## 🔨 Build with Enhanced Warnings" >> $GITHUB_STEP_SUMMARY
+          echo "## Build with Enhanced Warnings" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           # Build treating warnings as errors
-          dotnet build --configuration Release --no-restore /p:TreatWarningsAsErrors=true
-
-          echo "✅ Build completed with no warnings or errors." >> $GITHUB_STEP_SUMMARY
+          if dotnet build --configuration Release --no-restore /p:TreatWarningsAsErrors=true; then
+            echo "✓ Build completed with no warnings or errors." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✗ Build failed with warnings or errors." >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
 
       # Run Roslyn analyzers (if configured in .csproj files)
       - name: Run code analysis
         run: |
-          echo "## 🔍 Code Analysis Results" >> $GITHUB_STEP_SUMMARY
+          echo "## Code Analysis Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           # Run with code analysis enabled, treating analyzer warnings as errors
-          dotnet build --configuration Release --no-restore \
+          if dotnet build --configuration Release --no-restore \
             /p:EnforceCodeStyleInBuild=true \
             /p:AnalysisLevel=latest-all \
-            /p:TreatWarningsAsErrors=true
-
-          echo "✅ Code analysis passed with no issues." >> $GITHUB_STEP_SUMMARY
+            /p:TreatWarningsAsErrors=true; then
+            echo "✓ Code analysis passed with no issues." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✗ Code analysis failed with issues." >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
 
   lint-frontend:
     name: Lint Frontend
@@ -186,35 +197,44 @@ jobs:
       - name: Run ESLint
         working-directory: src/BDP.Registry.Web
         run: |
-          echo "## 🎨 Frontend Linting Results" >> $GITHUB_STEP_SUMMARY
+          echo "## Frontend Linting Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           # Run ESLint and fail on any errors
-          yarn lint
-
-          echo "✅ ESLint passed with no errors." >> $GITHUB_STEP_SUMMARY
+          if yarn lint; then
+            echo "✓ ESLint passed with no errors." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✗ ESLint failed with errors." >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
 
       - name: Run TypeScript type checking
         working-directory: src/BDP.Registry.Web
         run: |
-          echo "## 📘 TypeScript Type Check" >> $GITHUB_STEP_SUMMARY
+          echo "## TypeScript Type Check" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           # Run TypeScript compiler in no-emit mode to check for type errors
-          yarn tsc --noEmit
-
-          echo "✅ TypeScript type checking passed." >> $GITHUB_STEP_SUMMARY
+          if yarn tsc --noEmit; then
+            echo "✓ TypeScript type checking passed." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✗ TypeScript type checking failed." >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
 
       - name: Run Prettier format check
         working-directory: src/BDP.Registry.Web
         run: |
-          echo "## ✨ Code Formatting Check" >> $GITHUB_STEP_SUMMARY
+          echo "## Code Formatting Check" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           # Check if code is formatted correctly
-          yarn prettier --check "src/**/*.{ts,tsx,js,jsx,json,css,scss,md}"
-
-          echo "✅ Code formatting is correct." >> $GITHUB_STEP_SUMMARY
+          if yarn prettier --check "src/**/*.{ts,tsx,js,jsx,json,css,scss,md}"; then
+            echo "✓ Code formatting is correct." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✗ Code formatting issues detected." >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
 
   build-and-test-backend:
     name: Build & Test Backend
@@ -279,7 +299,7 @@ jobs:
           BRANCH_COVERAGE=$(awk "BEGIN {printf \"%.2f\", $BRANCH_RATE * 100}")
 
           cat >> $GITHUB_STEP_SUMMARY << EOF
-          ## 📊 Backend Code Coverage Report
+          ## Backend Code Coverage Report
 
           | Metric | Value |
           |--------|-------|
@@ -290,9 +310,9 @@ jobs:
           EOF
 
           if (( $(echo "$COVERAGE >= ${{ env.MINIMUM_COVERAGE }}" | bc -l) )); then
-            echo "✅ **Coverage meets minimum threshold of ${{ env.MINIMUM_COVERAGE }}%**" >> $GITHUB_STEP_SUMMARY
+            echo "✓ Coverage meets minimum threshold of ${{ env.MINIMUM_COVERAGE }}%" >> $GITHUB_STEP_SUMMARY
           else
-            echo "⚠️ **Coverage is below minimum threshold of ${{ env.MINIMUM_COVERAGE }}%**" >> $GITHUB_STEP_SUMMARY
+            echo "✗ Coverage is below minimum threshold of ${{ env.MINIMUM_COVERAGE }}%" >> $GITHUB_STEP_SUMMARY
           fi
 
       - name: Upload Test Results
@@ -346,7 +366,7 @@ jobs:
               --verbosity normal \
               --logger "trx;LogFileName=cli-test-results.trx"
           else
-            echo "⚠️ No CLI tests found, skipping test execution" >> $GITHUB_STEP_SUMMARY
+            echo "Note: No CLI tests found, skipping test execution" >> $GITHUB_STEP_SUMMARY
           fi
 
       - name: Upload CLI Test Results
@@ -386,12 +406,15 @@ jobs:
       - name: Run tests
         working-directory: src/BDP.Registry.Web
         run: |
-          echo "## 🧪 Frontend Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "## Frontend Test Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          yarn test --run --coverage
-
-          echo "✅ All frontend tests passed." >> $GITHUB_STEP_SUMMARY
+          if yarn test --run --coverage; then
+            echo "✓ All frontend tests passed." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✗ Frontend tests failed." >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
 
       - name: Upload test coverage
         uses: actions/upload-artifact@v4
@@ -412,17 +435,17 @@ jobs:
           COVERAGE=${{ needs.build-and-test-backend.outputs.coverage-percentage }}
           MINIMUM=${{ env.MINIMUM_COVERAGE }}
 
-          echo "## 📊 Coverage Gate Check" >> $GITHUB_STEP_SUMMARY
+          echo "## Coverage Gate Check" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Coverage: ${COVERAGE}%" >> $GITHUB_STEP_SUMMARY
           echo "Minimum Required: ${MINIMUM}%" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           if (( $(echo "$COVERAGE >= $MINIMUM" | bc -l) )); then
-            echo "✅ **Coverage gate PASSED**" >> $GITHUB_STEP_SUMMARY
+            echo "✓ Coverage gate passed" >> $GITHUB_STEP_SUMMARY
             exit 0
           else
-            echo "❌ **Coverage gate FAILED**" >> $GITHUB_STEP_SUMMARY
+            echo "✗ Coverage gate failed" >> $GITHUB_STEP_SUMMARY
             echo "::error::Coverage ${COVERAGE}% is below minimum threshold of ${MINIMUM}%"
             exit 1
           fi
@@ -496,7 +519,7 @@ jobs:
       - name: Check for vulnerable packages
         id: vuln-check
         run: |
-          echo "## 🔒 .NET Dependency Vulnerability Report" >> $GITHUB_STEP_SUMMARY
+          echo "## .NET Dependency Vulnerability Report" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           # List vulnerable packages
@@ -504,7 +527,7 @@ jobs:
 
           # Check if vulnerabilities were found
           if grep -q "has the following vulnerable packages" vulnerability-report-dotnet.txt; then
-            echo "❌ **Vulnerable packages detected!**" >> $GITHUB_STEP_SUMMARY
+            echo "✗ Vulnerable packages detected" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
             cat vulnerability-report-dotnet.txt >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
@@ -523,7 +546,7 @@ jobs:
             echo "high=$HIGH" >> $GITHUB_OUTPUT
             echo "has_vulnerabilities=true" >> $GITHUB_OUTPUT
           else
-            echo "✅ **No vulnerable .NET packages detected.**" >> $GITHUB_STEP_SUMMARY
+            echo "✓ No vulnerable .NET packages detected" >> $GITHUB_STEP_SUMMARY
             echo "has_vulnerabilities=false" >> $GITHUB_OUTPUT
           fi
 
@@ -572,7 +595,7 @@ jobs:
         id: audit
         working-directory: src/BDP.Registry.Web
         run: |
-          echo "## 🔒 Frontend Dependency Vulnerability Report" >> $GITHUB_STEP_SUMMARY
+          echo "## Frontend Dependency Vulnerability Report" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           # Run audit and capture output
@@ -598,12 +621,12 @@ jobs:
             echo "has_vulnerabilities=true" >> $GITHUB_OUTPUT
 
             if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
-              echo "❌ **Critical or High severity vulnerabilities detected!**" >> $GITHUB_STEP_SUMMARY
+              echo "✗ Critical or high severity vulnerabilities detected" >> $GITHUB_STEP_SUMMARY
             else
-              echo "✅ **No critical or high severity vulnerabilities.**" >> $GITHUB_STEP_SUMMARY
+              echo "✓ No critical or high severity vulnerabilities" >> $GITHUB_STEP_SUMMARY
             fi
           else
-            echo "✅ **No vulnerabilities detected.**" >> $GITHUB_STEP_SUMMARY
+            echo "✓ No vulnerabilities detected" >> $GITHUB_STEP_SUMMARY
             echo "has_vulnerabilities=false" >> $GITHUB_OUTPUT
           fi
 
@@ -651,26 +674,37 @@ jobs:
         run: dotnet restore
 
       - name: Install dotnet-project-licenses tool
-        run: dotnet tool install --global dotnet-project-licenses
+        run: |
+          # Install the latest version compatible with .NET 9
+          dotnet tool install --global dotnet-project-licenses --version 2.5.0 || \
+          dotnet tool update --global dotnet-project-licenses --version 2.5.0
 
       - name: Generate license report
         run: |
-          echo "## 📜 .NET Package License Report" >> $GITHUB_STEP_SUMMARY
+          echo "## .NET Package License Report" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           # Generate JSON license report
-          dotnet-project-licenses --input . --output-directory ./licenses --export-license-texts --json --include-transitive
-
-          # Generate markdown table for summary
-          dotnet-project-licenses --input . --output-directory ./licenses --markdown
-
-          if [ -f "./licenses/licenses.md" ]; then
-            echo "### License Summary" >> $GITHUB_STEP_SUMMARY
-            cat ./licenses/licenses.md >> $GITHUB_STEP_SUMMARY
+          if dotnet-project-licenses --input . --output-directory ./licenses --export-license-texts --json --include-transitive 2>&1 | tee license-generation.log; then
+            echo "✓ License report generated successfully" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✗ Failed to generate license report" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Error details:" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cat license-generation.log >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            exit 1
           fi
 
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ License report generated successfully." >> $GITHUB_STEP_SUMMARY
+          # Generate markdown table for summary
+          if dotnet-project-licenses --input . --output-directory ./licenses --markdown 2>&1; then
+            if [ -f "./licenses/licenses.md" ]; then
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "### License Summary" >> $GITHUB_STEP_SUMMARY
+              cat ./licenses/licenses.md >> $GITHUB_STEP_SUMMARY
+            fi
+          fi
 
       - name: Check for non-compliant licenses
         id: license-check
@@ -697,7 +731,7 @@ jobs:
 
             if [ ! -z "$NON_COMPLIANT" ]; then
               echo "" >> $GITHUB_STEP_SUMMARY
-              echo "⚠️ **Non-compliant licenses found:**" >> $GITHUB_STEP_SUMMARY
+              echo "✗ Non-compliant licenses found:" >> $GITHUB_STEP_SUMMARY
               echo "$NON_COMPLIANT" >> $GITHUB_STEP_SUMMARY
               echo "" >> $GITHUB_STEP_SUMMARY
               echo "Allowed licenses: $ALLOWED_LICENSES" >> $GITHUB_STEP_SUMMARY
@@ -705,9 +739,13 @@ jobs:
               echo "has_issues=true" >> $GITHUB_OUTPUT
             else
               echo "" >> $GITHUB_STEP_SUMMARY
-              echo "✅ **All licenses are compliant.**" >> $GITHUB_STEP_SUMMARY
+              echo "✓ All licenses are compliant" >> $GITHUB_STEP_SUMMARY
               echo "has_issues=false" >> $GITHUB_OUTPUT
             fi
+          else
+            echo "::error::License report file not found"
+            echo "has_issues=true" >> $GITHUB_OUTPUT
+            exit 1
           fi
 
       - name: Upload license report
@@ -753,31 +791,45 @@ jobs:
       - name: Generate license report
         working-directory: src/BDP.Registry.Web
         run: |
-          echo "## 📜 Frontend Package License Report" >> $GITHUB_STEP_SUMMARY
+          echo "## Frontend Package License Report" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           # Generate JSON report
-          license-checker --json --out licenses.json
+          if license-checker --json --out licenses.json 2>&1 | tee license-generation.log; then
+            echo "✓ License report generated successfully" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✗ Failed to generate license report" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Error details:" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cat license-generation.log >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
 
           # Generate CSV report for easier viewing
           license-checker --csv --out licenses.csv
 
           # Generate markdown summary
-          license-checker --summary > licenses-summary.txt
-
-          echo "### License Summary" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          cat licenses-summary.txt >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ License report generated successfully." >> $GITHUB_STEP_SUMMARY
+          if license-checker --summary > licenses-summary.txt; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### License Summary" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cat licenses-summary.txt >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          fi
 
       - name: Check for non-compliant licenses
         id: license-check
         working-directory: src/BDP.Registry.Web
         run: |
           ALLOWED_LICENSES="${{ env.ALLOWED_LICENSES }}"
+
+          if [ ! -f "licenses.json" ]; then
+            echo "::error::License report file not found"
+            echo "has_issues=true" >> $GITHUB_OUTPUT
+            exit 1
+          fi
 
           # Check for non-compliant licenses
           license-checker --json --out licenses.json
@@ -793,7 +845,7 @@ jobs:
 
           if [ ! -z "$NON_COMPLIANT" ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "⚠️ **Non-compliant licenses found:**" >> $GITHUB_STEP_SUMMARY
+            echo "✗ Non-compliant licenses found:" >> $GITHUB_STEP_SUMMARY
             echo "$NON_COMPLIANT" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "Allowed licenses: $ALLOWED_LICENSES" >> $GITHUB_STEP_SUMMARY
@@ -801,7 +853,7 @@ jobs:
             echo "has_issues=true" >> $GITHUB_OUTPUT
           else
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "✅ **All licenses are compliant.**" >> $GITHUB_STEP_SUMMARY
+            echo "✓ All licenses are compliant" >> $GITHUB_STEP_SUMMARY
             echo "has_issues=false" >> $GITHUB_OUTPUT
           fi
 
@@ -858,8 +910,8 @@ jobs:
 
       - name: Docker build summary
         run: |
-          echo "## 🐳 Docker Build Results" >> $GITHUB_STEP_SUMMARY
-          echo "✅ All Docker images built successfully" >> $GITHUB_STEP_SUMMARY
+          echo "## Docker Build Results" >> $GITHUB_STEP_SUMMARY
+          echo "✓ All Docker images built successfully" >> $GITHUB_STEP_SUMMARY
 
   quality-gate:
     name: Quality Gate
@@ -882,7 +934,7 @@ jobs:
     steps:
       - name: Check all jobs passed or skipped
         run: |
-          echo "# 🎯 Quality Gate Results" >> $GITHUB_STEP_SUMMARY
+          echo "# Quality Gate Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
           check_job() {
@@ -891,13 +943,13 @@ jobs:
             local extra=$3
 
             if [[ "$result" == "success" ]]; then
-              echo "✅ $name: Passed$extra" >> $GITHUB_STEP_SUMMARY
+              echo "✓ $name: Passed$extra" >> $GITHUB_STEP_SUMMARY
               return 0
             elif [[ "$result" == "skipped" ]]; then
-              echo "⭐️ $name: Skipped (no changes)" >> $GITHUB_STEP_SUMMARY
+              echo "- $name: Skipped (no relevant changes)" >> $GITHUB_STEP_SUMMARY
               return 0
             else
-              echo "❌ $name: Failed" >> $GITHUB_STEP_SUMMARY
+              echo "✗ $name: Failed" >> $GITHUB_STEP_SUMMARY
               return 1
             fi
           }
@@ -920,8 +972,8 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
 
           if [ "$FAILED" = true ]; then
-            echo "❌ **Quality gate FAILED**" >> $GITHUB_STEP_SUMMARY
+            echo "✗ Quality gate failed" >> $GITHUB_STEP_SUMMARY
             exit 1
           else
-            echo "✅ **Quality gate PASSED**" >> $GITHUB_STEP_SUMMARY
+            echo "✓ Quality gate passed" >> $GITHUB_STEP_SUMMARY
           fi

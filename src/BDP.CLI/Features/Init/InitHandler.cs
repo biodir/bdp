@@ -1,7 +1,7 @@
-using Spectre.Console;
 using BDP.Application.Interfaces;
 using BDP.Domain.Common;
 using BDP.Domain.Models;
+using Spectre.Console;
 
 namespace BDP.CLI.Features.Init;
 
