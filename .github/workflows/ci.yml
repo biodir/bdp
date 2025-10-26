@@ -61,7 +61,7 @@ jobs:
           CI_WORKFLOW_CHANGED=false
           if echo "$CHANGED_FILES" | grep -qE '^\.github/workflows/.*\.ya?ml$'; then
             CI_WORKFLOW_CHANGED=true
-            echo "    CI workflow file changed - running all jobs"
+            echo "CI workflow file changed - running all jobs"
           fi
 
           # Check for backend changes (API, Domain, Application, Infrastructure, or their tests)
@@ -229,7 +229,8 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
 
           # Check if code is formatted correctly
-          if yarn prettier --check "src/**/*.{ts,tsx,js,jsx,json,css,scss,md}"; then
+          # Use 'yarn run' to execute prettier from node_modules
+          if yarn run prettier --check "src/**/*.{ts,tsx,js,jsx,json,css,scss,md}"; then
             echo "✓ Code formatting is correct." >> $GITHUB_STEP_SUMMARY
           else
             echo "✗ Code formatting issues detected." >> $GITHUB_STEP_SUMMARY
@@ -598,35 +599,58 @@ jobs:
           echo "## Frontend Dependency Vulnerability Report" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          # Run audit and capture output
-          yarn npm audit --recursive --json > audit-report.json || true
+          # Run yarn audit and capture output
+          # Note: yarn audit uses different format than npm audit
+          set +e
+          yarn audit --json > audit-report.json 2>&1
+          AUDIT_EXIT_CODE=$?
+          set -e
 
-          if [ -s audit-report.json ] && [ "$(jq '.metadata' audit-report.json)" != "null" ]; then
-            CRITICAL=$(jq -r '.metadata.vulnerabilities.critical // 0' audit-report.json)
-            HIGH=$(jq -r '.metadata.vulnerabilities.high // 0' audit-report.json)
-            MODERATE=$(jq -r '.metadata.vulnerabilities.moderate // 0' audit-report.json)
-            LOW=$(jq -r '.metadata.vulnerabilities.low // 0' audit-report.json)
+          # Check if audit report has content
+          if [ -s audit-report.json ]; then
+            # Parse yarn audit JSON format (each line is a separate JSON object)
+            # Count vulnerabilities by severity
+            CRITICAL=$(grep -o '"severity":"critical"' audit-report.json | wc -l || echo "0")
+            HIGH=$(grep -o '"severity":"high"' audit-report.json | wc -l || echo "0")
+            MODERATE=$(grep -o '"severity":"moderate"' audit-report.json | wc -l || echo "0")
+            LOW=$(grep -o '"severity":"low"' audit-report.json | wc -l || echo "0")
+
+            # Remove leading/trailing whitespace
+            CRITICAL=$(echo $CRITICAL | xargs)
+            HIGH=$(echo $HIGH | xargs)
+            MODERATE=$(echo $MODERATE | xargs)
+            LOW=$(echo $LOW | xargs)
+
             TOTAL=$((CRITICAL + HIGH + MODERATE + LOW))
 
-            echo "| Severity | Count |" >> $GITHUB_STEP_SUMMARY
-            echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
-            echo "| Critical | $CRITICAL |" >> $GITHUB_STEP_SUMMARY
-            echo "| High | $HIGH |" >> $GITHUB_STEP_SUMMARY
-            echo "| Moderate | $MODERATE |" >> $GITHUB_STEP_SUMMARY
-            echo "| Low | $LOW |" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
+            if [ "$TOTAL" -gt 0 ]; then
+              echo "| Severity | Count |" >> $GITHUB_STEP_SUMMARY
+              echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+              echo "| Critical | $CRITICAL |" >> $GITHUB_STEP_SUMMARY
+              echo "| High | $HIGH |" >> $GITHUB_STEP_SUMMARY
+              echo "| Moderate | $MODERATE |" >> $GITHUB_STEP_SUMMARY
+              echo "| Low | $LOW |" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
 
-            echo "critical=$CRITICAL" >> $GITHUB_OUTPUT
-            echo "high=$HIGH" >> $GITHUB_OUTPUT
-            echo "has_vulnerabilities=true" >> $GITHUB_OUTPUT
+              echo "critical=$CRITICAL" >> $GITHUB_OUTPUT
+              echo "high=$HIGH" >> $GITHUB_OUTPUT
+              echo "has_vulnerabilities=true" >> $GITHUB_OUTPUT
 
-            if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
-              echo "✗ Critical or high severity vulnerabilities detected" >> $GITHUB_STEP_SUMMARY
+              if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
+                echo "✗ Critical or high severity vulnerabilities detected" >> $GITHUB_STEP_SUMMARY
+              else
+                echo "✓ No critical or high severity vulnerabilities" >> $GITHUB_STEP_SUMMARY
+              fi
             else
-              echo "✓ No critical or high severity vulnerabilities" >> $GITHUB_STEP_SUMMARY
+              echo "✓ No vulnerabilities detected" >> $GITHUB_STEP_SUMMARY
+              echo "critical=0" >> $GITHUB_OUTPUT
+              echo "high=0" >> $GITHUB_OUTPUT
+              echo "has_vulnerabilities=false" >> $GITHUB_OUTPUT
             fi
           else
-            echo "✓ No vulnerabilities detected" >> $GITHUB_STEP_SUMMARY
+            echo "✓ No vulnerabilities detected or audit data unavailable" >> $GITHUB_STEP_SUMMARY
+            echo "critical=0" >> $GITHUB_OUTPUT
+            echo "high=0" >> $GITHUB_OUTPUT
             echo "has_vulnerabilities=false" >> $GITHUB_OUTPUT
           fi
 
@@ -684,9 +708,25 @@ jobs:
           echo "## .NET Package License Report" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
+          # Create output directory if it doesn't exist
+          mkdir -p ./licenses
+
           # Generate JSON license report
           if dotnet-project-licenses --input . --output-directory ./licenses --export-license-texts --json --include-transitive 2>&1 | tee license-generation.log; then
-            echo "✓ License report generated successfully" >> $GITHUB_STEP_SUMMARY
+            echo "✓ License report generation completed" >> $GITHUB_STEP_SUMMARY
+
+            # Verify the JSON file was created
+            if [ -f "./licenses/licenses.json" ]; then
+              echo "✓ JSON report file verified at ./licenses/licenses.json" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "✗ JSON report file not found at expected location" >> $GITHUB_STEP_SUMMARY
+              echo "" >> $GITHUB_STEP_SUMMARY
+              echo "Files created in ./licenses directory:" >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+              ls -la ./licenses/ >> $GITHUB_STEP_SUMMARY
+              echo '```' >> $GITHUB_STEP_SUMMARY
+              exit 1
+            fi
           else
             echo "✗ Failed to generate license report" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
@@ -769,7 +809,7 @@ jobs:
           name: license-report-backend
           path: licenses/
           retention-days: 90
-
+      
       - name: Fail on non-compliant licenses
         if: steps.license-check.outputs.has_issues == 'true'
         run: |
