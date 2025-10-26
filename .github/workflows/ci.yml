@@ -61,7 +61,7 @@ jobs:
           CI_WORKFLOW_CHANGED=false
           if echo "$CHANGED_FILES" | grep -qE '^\.github/workflows/.*\.ya?ml$'; then
             CI_WORKFLOW_CHANGED=true
-            echo "⚠️ CI workflow file changed - running all jobs"
+            echo "    CI workflow file changed - running all jobs"
           fi
 
           # Check for backend changes (API, Domain, Application, Infrastructure, or their tests)
@@ -102,7 +102,7 @@ jobs:
           echo "Frontend changed: $FRONTEND_CHANGED"
 
   lint-backend:
-    name: Lint Backend (.NET)
+    name: Lint Backend
     needs: detect-changes
     if: needs.detect-changes.outputs.should_run_backend == 'true' || needs.detect-changes.outputs.should_run_cli == 'true'
     runs-on: ubuntu-latest
@@ -676,8 +676,8 @@ jobs:
       - name: Install dotnet-project-licenses tool
         run: |
           # Install the latest version compatible with .NET 9
-          dotnet tool install --global dotnet-project-licenses --version 2.5.0 || \
-          dotnet tool update --global dotnet-project-licenses --version 2.5.0
+          dotnet tool install --global dotnet-project-licenses || \
+          dotnet tool update --global dotnet-project-licenses
 
       - name: Generate license report
         run: |
@@ -712,40 +712,54 @@ jobs:
           # Parse the JSON report and check for non-compliant licenses
           ALLOWED_LICENSES="${{ env.ALLOWED_LICENSES }}"
 
+          # Find the JSON file - dotnet-project-licenses may create it with different names
+          JSON_FILE=""
           if [ -f "./licenses/licenses.json" ]; then
-            # Extract unique licenses
-            FOUND_LICENSES=$(jq -r '.[].License' ./licenses/licenses.json | sort -u)
-
-            echo "Found licenses:"
-            echo "$FOUND_LICENSES"
-
-            NON_COMPLIANT=""
-            while IFS= read -r license; do
-              if [ ! -z "$license" ] && [ "$license" != "null" ]; then
-                # Check if license is in allowed list
-                if ! echo "$ALLOWED_LICENSES" | grep -q -w "$license"; then
-                  NON_COMPLIANT="$NON_COMPLIANT\n- $license"
-                fi
-              fi
-            done <<< "$FOUND_LICENSES"
-
-            if [ ! -z "$NON_COMPLIANT" ]; then
-              echo "" >> $GITHUB_STEP_SUMMARY
-              echo "✗ Non-compliant licenses found:" >> $GITHUB_STEP_SUMMARY
-              echo "$NON_COMPLIANT" >> $GITHUB_STEP_SUMMARY
-              echo "" >> $GITHUB_STEP_SUMMARY
-              echo "Allowed licenses: $ALLOWED_LICENSES" >> $GITHUB_STEP_SUMMARY
-              echo "::warning::Non-compliant licenses detected. Please review the license report."
-              echo "has_issues=true" >> $GITHUB_OUTPUT
-            else
-              echo "" >> $GITHUB_STEP_SUMMARY
-              echo "✓ All licenses are compliant" >> $GITHUB_STEP_SUMMARY
-              echo "has_issues=false" >> $GITHUB_OUTPUT
-            fi
+            JSON_FILE="./licenses/licenses.json"
+          elif [ -f "./licenses.json" ]; then
+            JSON_FILE="./licenses.json"
           else
-            echo "::error::License report file not found"
+            # List what files were actually created
+            echo "License report file not found. Looking for generated files:" >> $GITHUB_STEP_SUMMARY
+            ls -la ./licenses/ 2>/dev/null || echo "No licenses directory found"
+            find . -name "*.json" -type f 2>/dev/null || echo "No JSON files found"
+
+            echo "::error::License report JSON file not found at expected location"
             echo "has_issues=true" >> $GITHUB_OUTPUT
             exit 1
+          fi
+
+          echo "Using license file: $JSON_FILE"
+
+          # Extract unique licenses
+          FOUND_LICENSES=$(jq -r '.[].License' "$JSON_FILE" | sort -u)
+
+          echo "Found licenses:"
+          echo "$FOUND_LICENSES"
+
+          NON_COMPLIANT=""
+          while IFS= read -r license; do
+            if [ ! -z "$license" ] && [ "$license" != "null" ]; then
+              # Check if license is in allowed list
+              if ! echo "$ALLOWED_LICENSES" | grep -q -w "$license"; then
+                NON_COMPLIANT="$NON_COMPLIANT\n- $license"
+              fi
+            fi
+          done <<< "$FOUND_LICENSES"
+
+          if [ ! -z "$NON_COMPLIANT" ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "✗ Non-compliant licenses found:" >> $GITHUB_STEP_SUMMARY
+            echo -e "$NON_COMPLIANT" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Allowed licenses: $ALLOWED_LICENSES" >> $GITHUB_STEP_SUMMARY
+            echo "::error::Non-compliant licenses detected. Please review the license report."
+            echo "has_issues=true" >> $GITHUB_OUTPUT
+            exit 1
+          else
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "✓ All licenses are compliant" >> $GITHUB_STEP_SUMMARY
+            echo "has_issues=false" >> $GITHUB_OUTPUT
           fi
 
       - name: Upload license report
@@ -756,12 +770,11 @@ jobs:
           path: licenses/
           retention-days: 90
 
-      # Optionally fail the build on non-compliant licenses (uncomment if needed)
-      # - name: Fail on non-compliant licenses
-      #   if: steps.license-check.outputs.has_issues == 'true'
-      #   run: |
-      #     echo "::error::Non-compliant licenses found. Build failed."
-      #     exit 1
+      - name: Fail on non-compliant licenses
+        if: steps.license-check.outputs.has_issues == 'true'
+        run: |
+          echo "::error::Non-compliant licenses found. Build failed."
+          exit 1
 
   license-compliance-frontend:
     name: License Compliance (Frontend)
