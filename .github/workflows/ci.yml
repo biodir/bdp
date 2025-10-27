@@ -125,13 +125,11 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore
 
-      # dotnet format for code style
       - name: Run dotnet format (style)
         run: |
           echo "## Backend Code Formatting Check" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          # This will fail the job if formatting issues are found
           if dotnet format --verify-no-changes --verbosity diagnostic; then
             echo "✅ Code formatting is correct." >> $GITHUB_STEP_SUMMARY
           else
@@ -141,13 +139,11 @@ jobs:
             exit 1
           fi
 
-      # Run dotnet build with /WarnAsError to treat warnings as errors
       - name: Build with warnings as errors
         run: |
           echo "## Build with Enhanced Warnings" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          # Build treating warnings as errors
           if dotnet build --configuration Release --no-restore /p:TreatWarningsAsErrors=true; then
             echo "✅ Build completed with no warnings or errors." >> $GITHUB_STEP_SUMMARY
           else
@@ -155,13 +151,11 @@ jobs:
             exit 1
           fi
 
-      # Run Roslyn analyzers (if configured in .csproj files)
       - name: Run code analysis
         run: |
           echo "## Code Analysis Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          # Run with code analysis enabled, treating analyzer warnings as errors
           if dotnet build --configuration Release --no-restore \
             /p:EnforceCodeStyleInBuild=true \
             /p:AnalysisLevel=latest-all \
@@ -200,71 +194,48 @@ jobs:
           echo "## Frontend Linting Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          # Run ESLint and fail on any errors
           if yarn lint; then
-            echo "✅ ESLint passed with no errors." >> $GITHUB_STEP_SUMMARY
+            echo "✅ ESLint passed with no issues." >> $GITHUB_STEP_SUMMARY
           else
-            echo "❌ ESLint failed with errors." >> $GITHUB_STEP_SUMMARY
+            echo "❌ ESLint found issues." >> $GITHUB_STEP_SUMMARY
             exit 1
           fi
 
-      - name: Run TypeScript type checking
+      - name: Run Prettier check
+        working-directory: src/BDP.Registry.Web
+        run: |
+          echo "## Frontend Code Formatting Check" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if yarn prettier --check .; then
+            echo "✅ All files are properly formatted." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Some files need formatting." >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Run \`yarn prettier --write .\` locally to fix formatting issues." >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+      - name: Run TypeScript check
         working-directory: src/BDP.Registry.Web
         run: |
           echo "## TypeScript Type Check" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          # Run TypeScript compiler in no-emit mode to check for type errors
           if yarn tsc --noEmit; then
             echo "✅ TypeScript type checking passed." >> $GITHUB_STEP_SUMMARY
           else
-            echo "❌ TypeScript type checking failed." >> $GITHUB_STEP_SUMMARY
+            echo "❌ TypeScript type errors found." >> $GITHUB_STEP_SUMMARY
             exit 1
-          fi
-
-      - name: Run Prettier format check
-        working-directory: src/BDP.Registry.Web
-        run: |
-          echo "## Code Formatting Check" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          # Check if prettier is defined in package.json scripts
-          if jq -e '.scripts.format or .scripts["format:check"] or .scripts.prettier' package.json >/dev/null 2>&1; then
-            # Use the defined script
-            if jq -e '.scripts["format:check"]' package.json >/dev/null 2>&1; then
-              if yarn run format:check; then
-                echo "✅ Code formatting is correct." >> $GITHUB_STEP_SUMMARY
-              else
-                echo "❌ Code formatting issues detected." >> $GITHUB_STEP_SUMMARY
-                exit 1
-              fi
-            elif jq -e '.scripts.format' package.json >/dev/null 2>&1; then
-              if yarn run format --check; then
-                echo "✅ Code formatting is correct." >> $GITHUB_STEP_SUMMARY
-              else
-                echo "❌ Code formatting issues detected." >> $GITHUB_STEP_SUMMARY
-                exit 1
-              fi
-            else
-              if yarn run prettier --check "src/**/*.{ts,tsx,js,jsx,json,css,scss,md}"; then
-                echo "✅ Code formatting is correct." >> $GITHUB_STEP_SUMMARY
-              else
-                echo "❌ Code formatting issues detected." >> $GITHUB_STEP_SUMMARY
-                exit 1
-              fi
-            fi
-          else
-            # Prettier not in scripts, skip this check
-            echo "⏭️ Prettier not configured in package.json, skipping format check" >> $GITHUB_STEP_SUMMARY
           fi
 
   build-and-test-backend:
     name: Build & Test Backend
-    needs: [detect-changes, lint-backend]
+    needs: detect-changes
     if: needs.detect-changes.outputs.should_run_backend == 'true'
     runs-on: ubuntu-latest
     outputs:
-      coverage-percentage: ${{ steps.coverage-check.outputs.percentage }}
+      coverage-percentage: ${{ steps.coverage.outputs.coverage-percentage }}
     steps:
       - uses: actions/checkout@v4
 
@@ -287,75 +258,65 @@ jobs:
       - name: Build
         run: dotnet build --configuration Release --no-restore
 
-      - name: Run Tests with Coverage
+      - name: Run tests
         run: |
-          dotnet test \
+          echo "## Backend Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if dotnet test test/BDP.Registry.API.Tests/BDP.Registry.API.Tests.csproj \
             --configuration Release \
             --no-build \
-            --verbosity normal \
+            --logger "trx;LogFileName=test-results.trx" \
             --collect:"XPlat Code Coverage" \
             --results-directory ./TestResults \
-            --logger "trx;LogFileName=test-results.trx"
+            -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover; then
+            echo "✅ All backend tests passed." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Backend tests failed." >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
 
-      - name: Parse Coverage and Generate Report
-        id: coverage-check
+      - name: Calculate coverage
+        id: coverage
         run: |
-          COVERAGE_FILE=$(find ./TestResults -name 'coverage.cobertura.xml' -print -quit)
+          COVERAGE_FILE=$(find ./TestResults -name "coverage.opencover.xml" | head -n 1)
 
           if [ -z "$COVERAGE_FILE" ]; then
-            echo "::warning::No coverage file found - tests may not have coverage enabled"
-            echo "percentage=0" >> $GITHUB_OUTPUT
-            exit 0
+            echo "::error::Coverage file not found"
+            exit 1
           fi
 
-          echo "Found coverage file: $COVERAGE_FILE"
+          LINES_VALID=$(xmllint --xpath "string(//CoverageSession/Summary/@numSequencePoints)" "$COVERAGE_FILE")
+          LINES_COVERED=$(xmllint --xpath "string(//CoverageSession/Summary/@visitedSequencePoints)" "$COVERAGE_FILE")
 
-          LINE_RATE=$(grep -o 'line-rate="[^"]*"' "$COVERAGE_FILE" | head -1 | cut -d'"' -f2)
-          COVERAGE=$(awk "BEGIN {printf \"%.2f\", $LINE_RATE * 100}")
-
-          echo "percentage=$COVERAGE" >> $GITHUB_OUTPUT
-
-          LINES_COVERED=$(grep -o 'lines-covered="[^"]*"' "$COVERAGE_FILE" | head -1 | cut -d'"' -f2)
-          LINES_VALID=$(grep -o 'lines-valid="[^"]*"' "$COVERAGE_FILE" | head -1 | cut -d'"' -f2)
-          BRANCH_RATE=$(grep -o 'branch-rate="[^"]*"' "$COVERAGE_FILE" | head -1 | cut -d'"' -f2)
-          BRANCH_COVERAGE=$(awk "BEGIN {printf \"%.2f\", $BRANCH_RATE * 100}")
-
-          cat >> $GITHUB_STEP_SUMMARY << EOF
-          ## Backend Code Coverage Report
-
-          | Metric | Value |
-          |--------|-------|
-          | **Line Coverage** | **${COVERAGE}%** |
-          | **Branch Coverage** | ${BRANCH_COVERAGE}% |
-          | **Lines Covered** | ${LINES_COVERED} / ${LINES_VALID} |
-
-          EOF
-
-          if (( $(echo "$COVERAGE >= ${{ env.MINIMUM_COVERAGE }}" | bc -l) )); then
-            echo "✅ Coverage meets minimum threshold of ${{ env.MINIMUM_COVERAGE }}%" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "❌ Coverage is below minimum threshold of ${{ env.MINIMUM_COVERAGE }}%" >> $GITHUB_STEP_SUMMARY
+          if [ -z "$LINES_VALID" ] || [ -z "$LINES_COVERED" ] || [ "$LINES_VALID" -eq 0 ]; then
+            echo "::error::Could not extract coverage data"
+            exit 1
           fi
 
-      - name: Upload Test Results
+          COVERAGE=$(awk "BEGIN {printf \"%.2f\", ($LINES_COVERED / $LINES_VALID) * 100}")
+          echo "coverage-percentage=$COVERAGE" >> $GITHUB_OUTPUT
+          echo "Coverage: $COVERAGE%"
+
+      - name: Upload test results
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: backend-test-results
-          path: TestResults/**/*.trx
+          name: test-results-backend
+          path: ./TestResults/*.trx
           retention-days: 30
 
-      - name: Upload Coverage Report
+      - name: Upload coverage report
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: backend-coverage-report
-          path: TestResults/**/coverage.cobertura.xml
+          name: coverage-report-backend
+          path: ./TestResults/**/coverage.opencover.xml
           retention-days: 30
 
   build-and-test-cli:
     name: Build & Test CLI
-    needs: [detect-changes, lint-backend]
+    needs: detect-changes
     if: needs.detect-changes.outputs.should_run_cli == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -377,31 +338,36 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore
 
-      - name: Build CLI
-        run: dotnet build src/BDP.CLI/BDP.CLI.csproj --configuration Release --no-restore
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
 
-      - name: Run CLI Tests
+      - name: Run tests
         run: |
-          if [ -d "test/BDP.CLI.Tests" ]; then
-            dotnet test test/BDP.CLI.Tests/BDP.CLI.Tests.csproj \
-              --configuration Release \
-              --verbosity normal \
-              --logger "trx;LogFileName=cli-test-results.trx"
+          echo "## CLI Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if dotnet test test/BDP.CLI.Tests/BDP.CLI.Tests.csproj \
+            --configuration Release \
+            --no-build \
+            --logger "trx;LogFileName=test-results.trx" \
+            --results-directory ./TestResults; then
+            echo "✅ All CLI tests passed." >> $GITHUB_STEP_SUMMARY
           else
-            echo "Note: No CLI tests found, skipping test execution" >> $GITHUB_STEP_SUMMARY
+            echo "❌ CLI tests failed." >> $GITHUB_STEP_SUMMARY
+            exit 1
           fi
 
-      - name: Upload CLI Test Results
+      - name: Upload test results
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: cli-test-results
-          path: test/BDP.CLI.Tests/TestResults/**/*.trx
+          name: test-results-cli
+          path: ./TestResults/*.trx
           retention-days: 30
 
   build-and-test-frontend:
     name: Build & Test Frontend
-    needs: [detect-changes, lint-frontend]
+    needs: detect-changes
     if: needs.detect-changes.outputs.should_run_frontend == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -423,7 +389,16 @@ jobs:
 
       - name: Build
         working-directory: src/BDP.Registry.Web
-        run: yarn build
+        run: |
+          echo "## Frontend Build" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if yarn build; then
+            echo "✅ Frontend build successful." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Frontend build failed." >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
 
       - name: Run tests
         working-directory: src/BDP.Registry.Web
@@ -431,7 +406,7 @@ jobs:
           echo "## Frontend Test Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if yarn test --run --coverage; then
+          if yarn test:run; then
             echo "✅ All frontend tests passed." >> $GITHUB_STEP_SUMMARY
           else
             echo "❌ Frontend tests failed." >> $GITHUB_STEP_SUMMARY
@@ -442,45 +417,44 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: frontend-coverage
-          path: src/BDP.Registry.Web/coverage
+          name: coverage-report-frontend
+          path: src/BDP.Registry.Web/coverage/
           retention-days: 30
 
   coverage-gate:
     name: Coverage Gate
     needs: build-and-test-backend
-    if: needs.build-and-test-backend.result == 'success'
+    if: needs.detect-changes.outputs.should_run_backend == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Check coverage threshold
         run: |
           COVERAGE=${{ needs.build-and-test-backend.outputs.coverage-percentage }}
-          MINIMUM=${{ env.MINIMUM_COVERAGE }}
+          THRESHOLD=${{ env.MINIMUM_COVERAGE }}
 
-          echo "## Coverage Gate Check" >> $GITHUB_STEP_SUMMARY
+          echo "## Coverage Gate" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Coverage: ${COVERAGE}%" >> $GITHUB_STEP_SUMMARY
-          echo "Minimum Required: ${MINIMUM}%" >> $GITHUB_STEP_SUMMARY
+          echo "Coverage: **${COVERAGE}%**" >> $GITHUB_STEP_SUMMARY
+          echo "Threshold: **${THRESHOLD}%**" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if (( $(echo "$COVERAGE >= $MINIMUM" | bc -l) )); then
-            echo "✅ Coverage gate passed" >> $GITHUB_STEP_SUMMARY
-            exit 0
+          if awk "BEGIN {exit !($COVERAGE >= $THRESHOLD)}"; then
+            echo "✅ Coverage meets threshold" >> $GITHUB_STEP_SUMMARY
           else
-            echo "❌ Coverage gate failed" >> $GITHUB_STEP_SUMMARY
-            echo "::error::Coverage ${COVERAGE}% is below minimum threshold of ${MINIMUM}%"
+            echo "❌ Coverage below threshold (${COVERAGE}% < ${THRESHOLD}%)" >> $GITHUB_STEP_SUMMARY
             exit 1
           fi
 
   codeql-analysis:
     name: CodeQL Analysis
     needs: detect-changes
-    if: needs.detect-changes.outputs.should_run_backend == 'true' || needs.detect-changes.outputs.should_run_frontend == 'true'
+    if: needs.detect-changes.outputs.should_run_backend == 'true' || needs.detect-changes.outputs.should_run_cli == 'true' || needs.detect-changes.outputs.should_run_frontend == 'true'
     runs-on: ubuntu-latest
     permissions:
       security-events: write
       actions: read
       contents: read
+
     strategy:
       fail-fast: false
       matrix:
@@ -489,6 +463,7 @@ jobs:
             build-mode: manual
           - language: javascript-typescript
             build-mode: none
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -499,15 +474,17 @@ jobs:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
 
-      - if: matrix.build-mode == 'manual' && needs.detect-changes.outputs.should_run_backend == 'true'
-        name: Setup .NET
+      - name: Setup .NET
+        if: matrix.language == 'csharp'
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - if: matrix.build-mode == 'manual' && needs.detect-changes.outputs.should_run_backend == 'true'
-        name: Build .NET solution
-        run: dotnet build --configuration Release
+      - name: Build C# projects
+        if: matrix.language == 'csharp'
+        run: |
+          dotnet restore
+          dotnet build --configuration Release --no-restore
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
@@ -527,68 +504,33 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - name: Cache NuGet packages
-        uses: actions/cache@v4
-        with:
-          path: ~/.nuget/packages
-          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
-          restore-keys: |
-            ${{ runner.os }}-nuget-
-
       - name: Restore dependencies
         run: dotnet restore
 
-      - name: Check for vulnerable packages
-        id: vuln-check
+      - name: List vulnerable packages
+        id: audit
         run: |
-          echo "## .NET Dependency Vulnerability Report" >> $GITHUB_STEP_SUMMARY
+          echo "## Backend Security Audit" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          # List vulnerable packages
-          dotnet list package --vulnerable --include-transitive 2>&1 | tee vulnerability-report-dotnet.txt
+          AUDIT_OUTPUT=$(dotnet list package --vulnerable --include-transitive 2>&1 || true)
 
-          # Check if vulnerabilities were found
-          if grep -q "has the following vulnerable packages" vulnerability-report-dotnet.txt; then
-            echo "❌ Vulnerable packages detected" >> $GITHUB_STEP_SUMMARY
+          CRITICAL_COUNT=$(echo "$AUDIT_OUTPUT" | grep -c "Critical" || true)
+          HIGH_COUNT=$(echo "$AUDIT_OUTPUT" | grep -c "High" || true)
+
+          echo "Critical vulnerabilities: $CRITICAL_COUNT" >> $GITHUB_STEP_SUMMARY
+          echo "High vulnerabilities: $HIGH_COUNT" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "$CRITICAL_COUNT" -gt ${{ env.MAX_CRITICAL_VULNERABILITIES }} ] || [ "$HIGH_COUNT" -gt ${{ env.MAX_HIGH_VULNERABILITIES }} ]; then
+            echo "❌ Security vulnerabilities detected:" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
-            cat vulnerability-report-dotnet.txt >> $GITHUB_STEP_SUMMARY
+            echo "$AUDIT_OUTPUT" >> $GITHUB_STEP_SUMMARY
             echo '```' >> $GITHUB_STEP_SUMMARY
-
-            # Count severity levels
-            CRITICAL=$(grep -i "critical" vulnerability-report-dotnet.txt | wc -l)
-            HIGH=$(grep -i "high" vulnerability-report-dotnet.txt | grep -vi "critical" | wc -l)
-
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "| Severity | Count |" >> $GITHUB_STEP_SUMMARY
-            echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
-            echo "| Critical | $CRITICAL |" >> $GITHUB_STEP_SUMMARY
-            echo "| High | $HIGH |" >> $GITHUB_STEP_SUMMARY
-
-            echo "critical=$CRITICAL" >> $GITHUB_OUTPUT
-            echo "high=$HIGH" >> $GITHUB_OUTPUT
-            echo "has_vulnerabilities=true" >> $GITHUB_OUTPUT
-          else
-            echo "✅ No vulnerable .NET packages detected" >> $GITHUB_STEP_SUMMARY
-            echo "has_vulnerabilities=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Upload vulnerability report
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: vulnerability-report-dotnet
-          path: vulnerability-report-dotnet.txt
-          retention-days: 30
-
-      - name: Fail on vulnerabilities
-        if: steps.vuln-check.outputs.has_vulnerabilities == 'true'
-        run: |
-          CRITICAL=${{ steps.vuln-check.outputs.critical }}
-          HIGH=${{ steps.vuln-check.outputs.high }}
-
-          if [ "$CRITICAL" -gt "${{ env.MAX_CRITICAL_VULNERABILITIES }}" ] || [ "$HIGH" -gt "${{ env.MAX_HIGH_VULNERABILITIES }}" ]; then
-            echo "::error::Found $CRITICAL critical and $HIGH high severity vulnerabilities. Maximum allowed: ${{ env.MAX_CRITICAL_VULNERABILITIES }} critical, ${{ env.MAX_HIGH_VULNERABILITIES }} high."
+            echo "::error::Found $CRITICAL_COUNT critical and $HIGH_COUNT high vulnerabilities"
             exit 1
+          else
+            echo "✅ No critical or high severity vulnerabilities found" >> $GITHUB_STEP_SUMMARY
           fi
 
   dependency-audit-frontend:
@@ -613,85 +555,51 @@ jobs:
         working-directory: src/BDP.Registry.Web
         run: yarn install --immutable
 
-      - name: Audit dependencies
-        id: audit
+      - name: Run yarn audit
         working-directory: src/BDP.Registry.Web
         run: |
-          echo "## Frontend Dependency Vulnerability Report" >> $GITHUB_STEP_SUMMARY
+          echo "## Frontend Security Audit" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          # Run yarn audit and capture output
-          # Note: yarn audit uses different format than npm audit
-          set +e
-          yarn audit --json > audit-report.json 2>&1
-          AUDIT_EXIT_CODE=$?
-          set -e
+          if AUDIT_JSON=$(yarn npm audit --all --recursive --json 2>/dev/null); then
+            CRITICAL_COUNT=$(echo "$AUDIT_JSON" | jq '[.advisories // {} | to_entries[] | select(.value.severity == "critical")] | length')
+            HIGH_COUNT=$(echo "$AUDIT_JSON" | jq '[.advisories // {} | to_entries[] | select(.value.severity == "high")] | length')
+            MODERATE_COUNT=$(echo "$AUDIT_JSON" | jq '[.advisories // {} | to_entries[] | select(.value.severity == "moderate")] | length')
+            LOW_COUNT=$(echo "$AUDIT_JSON" | jq '[.advisories // {} | to_entries[] | select(.value.severity == "low")] | length')
 
-          # Check if audit report has content
-          if [ -s audit-report.json ]; then
-            # Parse yarn audit JSON format (each line is a separate JSON object)
-            # Count vulnerabilities by severity
-            CRITICAL=$(grep -o '"severity":"critical"' audit-report.json | wc -l || echo "0")
-            HIGH=$(grep -o '"severity":"high"' audit-report.json | wc -l || echo "0")
-            MODERATE=$(grep -o '"severity":"moderate"' audit-report.json | wc -l || echo "0")
-            LOW=$(grep -o '"severity":"low"' audit-report.json | wc -l || echo "0")
+            echo "| Severity | Count |" >> $GITHUB_STEP_SUMMARY
+            echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Critical | $CRITICAL_COUNT |" >> $GITHUB_STEP_SUMMARY
+            echo "| High | $HIGH_COUNT |" >> $GITHUB_STEP_SUMMARY
+            echo "| Moderate | $MODERATE_COUNT |" >> $GITHUB_STEP_SUMMARY
+            echo "| Low | $LOW_COUNT |" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
 
-            # Remove leading/trailing whitespace
-            CRITICAL=$(echo $CRITICAL | xargs)
-            HIGH=$(echo $HIGH | xargs)
-            MODERATE=$(echo $MODERATE | xargs)
-            LOW=$(echo $LOW | xargs)
-
-            TOTAL=$((CRITICAL + HIGH + MODERATE + LOW))
-
-            if [ "$TOTAL" -gt 0 ]; then
-              echo "| Severity | Count |" >> $GITHUB_STEP_SUMMARY
-              echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
-              echo "| Critical | $CRITICAL |" >> $GITHUB_STEP_SUMMARY
-              echo "| High | $HIGH |" >> $GITHUB_STEP_SUMMARY
-              echo "| Moderate | $MODERATE |" >> $GITHUB_STEP_SUMMARY
-              echo "| Low | $LOW |" >> $GITHUB_STEP_SUMMARY
+            if [ "$CRITICAL_COUNT" -gt ${{ env.MAX_CRITICAL_VULNERABILITIES }} ] || [ "$HIGH_COUNT" -gt ${{ env.MAX_HIGH_VULNERABILITIES }} ]; then
+              echo "❌ Security vulnerabilities detected" >> $GITHUB_STEP_SUMMARY
               echo "" >> $GITHUB_STEP_SUMMARY
 
-              echo "critical=$CRITICAL" >> $GITHUB_OUTPUT
-              echo "high=$HIGH" >> $GITHUB_OUTPUT
-              echo "has_vulnerabilities=true" >> $GITHUB_OUTPUT
-
-              if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
-                echo "❌ Critical or high severity vulnerabilities detected" >> $GITHUB_STEP_SUMMARY
-              else
-                echo "✅ No critical or high severity vulnerabilities" >> $GITHUB_STEP_SUMMARY
+              if [ "$CRITICAL_COUNT" -gt 0 ]; then
+                echo "### Critical Vulnerabilities:" >> $GITHUB_STEP_SUMMARY
+                echo '```' >> $GITHUB_STEP_SUMMARY
+                echo "$AUDIT_JSON" | jq -r '.advisories | to_entries[] | select(.value.severity == "critical") | "[\(.value.module_name)] \(.value.title) - \(.value.url)"'>> $GITHUB_STEP_SUMMARY
+                echo '```' >> $GITHUB_STEP_SUMMARY
               fi
+
+              if [ "$HIGH_COUNT" -gt 0 ]; then
+                echo "### High Vulnerabilities:" >> $GITHUB_STEP_SUMMARY
+                echo '```' >> $GITHUB_STEP_SUMMARY
+                echo "$AUDIT_JSON" | jq -r '.advisories | to_entries[] | select(.value.severity == "high") | "[\(.value.module_name)] \(.value.title) - \(.value.url)"' >> $GITHUB_STEP_SUMMARY
+                echo '```' >> $GITHUB_STEP_SUMMARY
+              fi
+
+              echo "::error::Found $CRITICAL_COUNT critical and $HIGH_COUNT high vulnerabilities"
+              exit 1
             else
-              echo "✅ No vulnerabilities detected" >> $GITHUB_STEP_SUMMARY
-              echo "critical=0" >> $GITHUB_OUTPUT
-              echo "high=0" >> $GITHUB_OUTPUT
-              echo "has_vulnerabilities=false" >> $GITHUB_OUTPUT
+              echo "✅ No critical or high severity vulnerabilities found" >> $GITHUB_STEP_SUMMARY
             fi
           else
-            echo "✅ No vulnerabilities detected or audit data unavailable" >> $GITHUB_STEP_SUMMARY
-            echo "critical=0" >> $GITHUB_OUTPUT
-            echo "high=0" >> $GITHUB_OUTPUT
-            echo "has_vulnerabilities=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Upload audit report
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: audit-report-frontend
-          path: src/BDP.Registry.Web/audit-report.json
-          retention-days: 30
-
-      - name: Fail on vulnerabilities
-        if: steps.audit.outputs.has_vulnerabilities == 'true'
-        run: |
-          CRITICAL=${{ steps.audit.outputs.critical }}
-          HIGH=${{ steps.audit.outputs.high }}
-
-          if [ "$CRITICAL" -gt "${{ env.MAX_CRITICAL_VULNERABILITIES }}" ] || [ "$HIGH" -gt "${{ env.MAX_HIGH_VULNERABILITIES }}" ]; then
-            echo "::error::Found $CRITICAL critical and $HIGH high severity vulnerabilities. Maximum allowed: ${{ env.MAX_CRITICAL_VULNERABILITIES }} critical, ${{ env.MAX_HIGH_VULNERABILITIES }} high."
-            exit 1
+            echo "✅ No vulnerabilities found" >> $GITHUB_STEP_SUMMARY
           fi
 
   license-compliance-backend:
@@ -707,353 +615,85 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - name: Cache NuGet packages
-        uses: actions/cache@v4
-        with:
-          path: ~/.nuget/packages
-          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
-          restore-keys: |
-            ${{ runner.os }}-nuget-
+      - name: Install dotnet-project-licenses
+        run: dotnet tool install --global dotnet-project-licenses
 
       - name: Restore dependencies
         run: dotnet restore
 
-      - name: Generate license report (native)
+      - name: Generate license report
         run: |
-          echo "## .NET Package License Report" >> $GITHUB_STEP_SUMMARY
+          echo "## Backend License Compliance" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          # Create output directory
-          mkdir -p ./licenses
+          dotnet-project-licenses --input . --output-directory ./licenses --export-license-texts --format json
+          dotnet-project-licenses --input . --format table > licenses/licenses-summary.txt
 
-          # Get list of packages using native dotnet command
-          echo "📦 Scanning NuGet packages..."
-          dotnet list package --include-transitive --format json > ./licenses/packages.json
-
-          # Get global packages folder location
-          PACKAGES_FOLDER=$(dotnet nuget locals global-packages --list | grep "global-packages:" | cut -d' ' -f2)
-          echo "Using global packages folder: $PACKAGES_FOLDER"
-
-          # Parse packages and extract licenses using xmllint
-          cat > ./licenses/extract-licenses.sh << 'EXTRACT_SCRIPT'
-          #!/bin/bash
-          PACKAGES_JSON="$1"
-          PACKAGES_FOLDER="$2"
-          OUTPUT_JSON="$3"
-
-          # Start JSON array
-          echo "[" > "$OUTPUT_JSON"
-          FIRST=true
-
-          # Parse the JSON and extract package info
-          jq -r '.projects[].frameworks[].topLevelPackages[]?, .projects[].frameworks[].transitivePackages[]? | "\(.id)|\(.resolvedVersion)"' "$PACKAGES_JSON" 2>/dev/null | sort -u | while IFS='|' read -r pkg_id pkg_version; do
-            if [ -z "$pkg_id" ] || [ -z "$pkg_version" ]; then
-              continue
-            fi
-
-            # Find nuspec file
-            pkg_id_lower=$(echo "$pkg_id" | tr '[:upper:]' '[:lower:]')
-            pkg_version_lower=$(echo "$pkg_version" | tr '[:upper:]' '[:lower:]')
-            nuspec_path="$PACKAGES_FOLDER/$pkg_id_lower/$pkg_version_lower/$pkg_id_lower.$pkg_version_lower.nuspec"
-
-            license="UNKNOWN"
-            if [ -f "$nuspec_path" ]; then
-              # Try license element with type attribute (SPDX expression)
-              license=$(grep -oP '<license\s+type="expression"[^>]*>\s*\K[^<]+' "$nuspec_path" 2>/dev/null | tr -d '\n\r' | xargs)
-
-              if [ -z "$license" ]; then
-                # Try simple license element
-                license=$(grep -oP '<license>\s*\K[^<]+' "$nuspec_path" 2>/dev/null | tr -d '\n\r' | xargs)
-              fi
-
-              if [ -z "$license" ]; then
-                # Try licenseUrl and extract license name from nuget.org URLs
-                license_url=$(grep -oP '<licenseUrl>\s*\K[^<]+' "$nuspec_path" 2>/dev/null | tr -d '\n\r' | xargs)
-                if [[ "$license_url" =~ licenses\.nuget\.org/([A-Za-z0-9._-]+) ]]; then
-                  license="${BASH_REMATCH[1]}"
-                elif [[ "$license_url" =~ opensource\.org/licenses/([A-Za-z0-9._-]+) ]]; then
-                  license="${BASH_REMATCH[1]}"
-                elif [[ "$license_url" =~ github\.com.*/(LICENSE|LICENCE) ]]; then
-                  # Try to infer from common GitHub patterns
-                  if [[ "$license_url" =~ MIT ]]; then
-                    license="MIT"
-                  elif [[ "$license_url" =~ Apache ]]; then
-                    license="Apache-2.0"
-                  fi
-                fi
-              fi
-
-              # Fallback: check for common patterns in the file
-              if [ "$license" = "UNKNOWN" ] || [ -z "$license" ]; then
-                if grep -qi "MIT License" "$nuspec_path" 2>/dev/null; then
-                  license="MIT"
-                elif grep -qi "Apache.*2\.0" "$nuspec_path" 2>/dev/null; then
-                  license="Apache-2.0"
-                elif grep -qi "BSD.*3.*Clause" "$nuspec_path" 2>/dev/null; then
-                  license="BSD-3-Clause"
-                elif grep -qi "BSD.*2.*Clause" "$nuspec_path" 2>/dev/null; then
-                  license="BSD-2-Clause"
-                fi
-              fi
-            fi
-
-            # Clean up license string
-            license=$(echo "$license" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-            if [ -z "$license" ]; then
-              license="UNKNOWN"
-            fi
-
-            # Add to JSON
-            if [ "$FIRST" = false ]; then
-              echo "," >> "$OUTPUT_JSON"
-            fi
-            FIRST=false
-
-            printf '  {\n    "PackageName": "%s",\n    "PackageVersion": "%s",\n    "License": "%s"\n  }' "$pkg_id" "$pkg_version" "$license" >> "$OUTPUT_JSON"
-          done
-
-          # Close JSON array
-          echo "]" >> "$OUTPUT_JSON"
-          EXTRACT_SCRIPT
-
-          chmod +x ./licenses/extract-licenses.sh
-          ./licenses/extract-licenses.sh ./licenses/packages.json "$PACKAGES_FOLDER" ./licenses/licenses.json
-
-          # Validate JSON
-          if ! jq empty ./licenses/licenses.json 2>/dev/null; then
-            echo "❌ Failed to generate valid JSON" >> $GITHUB_STEP_SUMMARY
-            exit 1
-          fi
-
-          PACKAGE_COUNT=$(jq '. | length' ./licenses/licenses.json 2>/dev/null || echo "0")
-          UNKNOWN_COUNT=$(jq '[.[] | select(.License == "UNKNOWN")] | length' ./licenses/licenses.json 2>/dev/null || echo "0")
-
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Scanned $PACKAGE_COUNT packages ($UNKNOWN_COUNT with unknown licenses)" >> $GITHUB_STEP_SUMMARY
-
-          # Create summary table
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### License Summary" >> $GITHUB_STEP_SUMMARY
-          jq -r 'group_by(.License) | map({license: .[0].License, count: length}) | sort_by(-.count) | .[] | "| \(.license) | \(.count) |"' ./licenses/licenses.json > ./licenses/summary.txt
-          if [ -s ./licenses/summary.txt ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "| License | Count |" >> $GITHUB_STEP_SUMMARY
-            echo "|---------|-------|" >> $GITHUB_STEP_SUMMARY
-            cat ./licenses/summary.txt >> $GITHUB_STEP_SUMMARY
-          fi
+          echo "License report generated successfully" >> $GITHUB_STEP_SUMMARY
 
       - name: Check for non-compliant licenses
         id: license-check
         run: |
           ALLOWED_LICENSES="${{ env.ALLOWED_LICENSES }}"
 
-          # Load acknowledged packages if file exists
           ACKNOWLEDGED_PACKAGES=""
           if [ -f ".github/acknowledged-licenses-backend.json" ]; then
-            ACKNOWLEDGED_PACKAGES=$(jq -r '.[] | "\(.package)@\(.version)"' .github/acknowledged-licenses-backend.json 2>/dev/null | tr '\n' '|')
-            echo "📋 Loaded acknowledged packages from .github/acknowledged-licenses-backend.json"
-          fi
-
-          if [ ! -f "./licenses/licenses.json" ]; then
-            echo "::error::License report JSON file not found"
-            echo "has_issues=true" >> $GITHUB_OUTPUT
-            exit 1
-          fi
-
-          if [ ! -s "./licenses/licenses.json" ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "⚠️ No packages found to check" >> $GITHUB_STEP_SUMMARY
-            echo "has_issues=false" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
-          # Check licenses
-          NON_COMPLIANT_COUNT=0
-          rm -f ./licenses/non-compliant.txt
-
-          jq -r '.[] | "\(.PackageName)|\(.PackageVersion)|\(.License)"' ./licenses/licenses.json | while IFS='|' read -r pkg_name pkg_version pkg_license; do
-            # Check if package is acknowledged
+            ACKNOWLEDGED_PACKAGES=$(jq -r '.[] | .package' .github/acknowledged-licenses-backend.json 2>/dev/null | tr '\n' '|' || echo "")
             if [ ! -z "$ACKNOWLEDGED_PACKAGES" ]; then
-              if echo "$ACKNOWLEDGED_PACKAGES" | grep -qF "${pkg_name}@${pkg_version}"; then
-                continue
-              fi
+              echo "📋 Loaded acknowledged packages from .github/acknowledged-licenses-backend.json"
             fi
-
-            # UNKNOWN licenses are non-compliant
-            if [ "$pkg_license" = "UNKNOWN" ] || [ -z "$pkg_license" ] || [ "$pkg_license" = "null" ]; then
-              echo "$pkg_name|$pkg_version|$pkg_license" >> ./licenses/non-compliant.txt
-              continue
-            fi
-
-            # Check if license is allowed
-            if ! echo "$ALLOWED_LICENSES" | grep -qE "(^|,)${pkg_license}(,|$)"; then
-              echo "$pkg_name|$pkg_version|$pkg_license" >> ./licenses/non-compliant.txt
-            fi
-          done
-
-          if [ -f ./licenses/non-compliant.txt ]; then
-            NON_COMPLIANT_COUNT=$(wc -l < ./licenses/non-compliant.txt)
           fi
 
-          if [ "$NON_COMPLIANT_COUNT" -gt 0 ]; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "❌ **Non-compliant licenses found ($NON_COMPLIANT_COUNT packages):**" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "| Package | Version | License |" >> $GITHUB_STEP_SUMMARY
-            echo "|---------|---------|---------|" >> $GITHUB_STEP_SUMMARY
-            while IFS='|' read -r pkg_name pkg_version license; do
-              echo "| $pkg_name | $pkg_version | $license |" >> $GITHUB_STEP_SUMMARY
-            done < ./licenses/non-compliant.txt
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "**Allowed licenses:** $ALLOWED_LICENSES" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "---" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "**To acknowledge a package, create \`.github/acknowledged-licenses-backend.json\`:**" >> $GITHUB_STEP_SUMMARY
-            echo '```json' >> $GITHUB_STEP_SUMMARY
-            echo '[' >> $GITHUB_STEP_SUMMARY
-            echo '  {' >> $GITHUB_STEP_SUMMARY
-            echo '    "package": "PackageName",' >> $GITHUB_STEP_SUMMARY
-            echo '    "version": "1.0.0",' >> $GITHUB_STEP_SUMMARY
-            echo '    "reason": "Reviewed and approved by legal team"' >> $GITHUB_STEP_SUMMARY
-            echo '  }' >> $GITHUB_STEP_SUMMARY
-            echo ']' >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo "::error::Non-compliant licenses detected in $NON_COMPLIANT_COUNT package(s). Review licenses and update acknowledged-licenses-backend.json if approved."
-            echo "has_issues=true" >> $GITHUB_OUTPUT
-            exit 1
-          else
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "✅ All licenses are compliant" >> $GITHUB_STEP_SUMMARY
-            echo "has_issues=false" >> $GITHUB_OUTPUT
-          fi
+          LICENSE_FILE=$(find ./licenses -name "*.json" -type f | head -n 1)
 
-      - name: Upload license report
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: license-report-backend
-          path: licenses/
-          retention-days: 90
-
-  license-compliance-frontend:
-    name: License Compliance (Frontend)
-    needs: detect-changes
-    if: needs.detect-changes.outputs.should_run_frontend == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'yarn'
-          cache-dependency-path: src/BDP.Registry.Web/yarn.lock
-
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Install dependencies
-        working-directory: src/BDP.Registry.Web
-        run: yarn install --immutable
-
-      - name: Install license-checker
-        run: npm install -g license-checker
-
-      - name: Generate license report
-        working-directory: src/BDP.Registry.Web
-        run: |
-          echo "## Frontend Package License Report" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          # Generate JSON report
-          if license-checker --json --out licenses.json 2>&1 | tee license-generation.log; then
-            echo "✅ License report generated successfully" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "❌ Failed to generate license report" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Error details:" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            cat license-generation.log >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            exit 1
-          fi
-
-          # Generate CSV report for easier viewing
-          license-checker --csv --out licenses.csv
-
-          # Generate markdown summary
-          if license-checker --summary > licenses-summary.txt; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### License Summary" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            cat licenses-summary.txt >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-          fi
-            echo "Error details:" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            cat license-generation.log >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            exit 1
-          fi
-
-          # Generate CSV report for easier viewing
-          license-checker --csv --out licenses.csv
-
-          # Generate markdown summary
-          if license-checker --summary > licenses-summary.txt; then
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "### License Summary" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            cat licenses-summary.txt >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-          fi
-
-      - name: Check for non-compliant licenses
-        id: license-check
-        working-directory: src/BDP.Registry.Web
-        run: |
-          ALLOWED_LICENSES="${{ env.ALLOWED_LICENSES }}"
-
-          # Load acknowledged packages if file exists
-          ACKNOWLEDGED_PACKAGES=""
-          if [ -f "../../.github/acknowledged-licenses-frontend.json" ]; then
-            ACKNOWLEDGED_PACKAGES=$(jq -r '.[] | .package' ../../.github/acknowledged-licenses-frontend.json 2>/dev/null | tr '\n' '|')
-            echo "📋 Loaded acknowledged packages from .github/acknowledged-licenses-frontend.json"
-          fi
-
-          if [ ! -f "licenses.json" ]; then
+          if [ -z "$LICENSE_FILE" ] || [ ! -f "$LICENSE_FILE" ]; then
             echo "::error::License report file not found"
             echo "has_issues=true" >> $GITHUB_OUTPUT
             exit 1
           fi
 
-          # Extract licenses and check compliance
+          echo "Using license file: $LICENSE_FILE"
+
           NON_COMPLIANT_COUNT=0
           rm -f non-compliant.txt
 
-          # Get all unique package@version with licenses
-          jq -r 'to_entries | .[] | "\(.key)|\(.value.licenses)"' licenses.json | while IFS='|' read -r pkg_full license; do
-            # Check if package is acknowledged
+          jq -r '.[] | "\(.PackageName)|\(.PackageVersion)|\(.LicenseType // "UNKNOWN")"' "$LICENSE_FILE" | while IFS='|' read -r pkg_name pkg_version license; do
+            pkg_full="${pkg_name}@${pkg_version}"
+
             if [ ! -z "$ACKNOWLEDGED_PACKAGES" ]; then
               if echo "$ACKNOWLEDGED_PACKAGES" | grep -qF "$pkg_full"; then
                 continue
               fi
             fi
 
-            # UNLICENSED or missing licenses are non-compliant
-            if [ -z "$license" ] || [ "$license" = "UNLICENSED" ] || [ "$license" = "UNKNOWN" ] || [ "$license" = "null" ]; then
-              echo "$pkg_full|UNLICENSED" >> non-compliant.txt
-              continue
+            if [ -z "$license" ] || [ "$license" = "UNKNOWN" ] || [ "$license" = "null" ] || [ "$license" = "" ]; then
+              echo "⚠️ Package $pkg_full has UNKNOWN license, attempting to fetch from NuGet..."
+
+              LICENSE_URL=$(curl -s "https://api.nuget.org/v3/registration5-semver1/${pkg_name,,}/index.json" | \
+                jq -r --arg version "$pkg_version" \
+                '.items[].items[] | select(.catalogEntry.version == $version) | .catalogEntry.licenseUrl // .catalogEntry.licenseExpression // "UNKNOWN"' 2>/dev/null || echo "UNKNOWN")
+
+              if [ "$LICENSE_URL" = "UNKNOWN" ] || [ -z "$LICENSE_URL" ]; then
+                echo "$pkg_full|UNKNOWN - Could not determine license" >> non-compliant.txt
+                continue
+              else
+                if [[ ! "$LICENSE_URL" =~ ^https?:// ]]; then
+                  license="$LICENSE_URL"
+                  echo "✓ Found license for $pkg_full: $license"
+                else
+                  echo "$pkg_full|UNKNOWN - License URL only: $LICENSE_URL" >> non-compliant.txt
+                  continue
+                fi
+              fi
             fi
 
-            # Handle compound licenses like "MIT OR Apache-2.0" or "(MIT AND BSD-3-Clause)"
             CLEAN_LICENSE=$(echo "$license" | sed 's/[()]//g' | sed 's/ OR /,/g' | sed 's/ AND /,/g')
 
             IS_COMPLIANT=false
             for lic in $(echo "$CLEAN_LICENSE" | tr ',' ' '); do
-              if echo "$ALLOWED_LICENSES" | grep -qE "(^|,)${lic}(,|$)"; then
+              lic=$(echo "$lic" | xargs)
+
+              if echo "$ALLOWED_LICENSES" | grep -qiE "(^|,)${lic}(,|$)"; then
                 IS_COMPLIANT=true
                 break
               fi
@@ -1080,18 +720,148 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "**Allowed licenses:** $ALLOWED_LICENSES" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "---" >> $GITHUB_STEP_SUMMARY
+            echo "To acknowledge: Create \`.github/acknowledged-licenses-backend.json\`" >> $GITHUB_STEP_SUMMARY
+            echo "::error::Non-compliant or unknown licenses detected in $NON_COMPLIANT_COUNT package(s)"
+            echo "has_issues=true" >> $GITHUB_OUTPUT
+            exit 1
+          else
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "**To acknowledge a package, create \`.github/acknowledged-licenses-frontend.json\`:**" >> $GITHUB_STEP_SUMMARY
-            echo '```json' >> $GITHUB_STEP_SUMMARY
-            echo '[' >> $GITHUB_STEP_SUMMARY
-            echo '  {' >> $GITHUB_STEP_SUMMARY
-            echo '    "package": "package-name@1.0.0",' >> $GITHUB_STEP_SUMMARY
-            echo '    "reason": "Reviewed and approved by legal team"' >> $GITHUB_STEP_SUMMARY
-            echo '  }' >> $GITHUB_STEP_SUMMARY
-            echo ']' >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            echo "::error::Non-compliant licenses detected in $NON_COMPLIANT_COUNT package(s). Review licenses and update acknowledged-licenses-frontend.json if approved."
+            echo "✅ All licenses are compliant" >> $GITHUB_STEP_SUMMARY
+            echo "has_issues=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload license report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: license-report-backend
+          path: |
+            licenses/*.json
+            licenses/licenses-summary.txt
+          retention-days: 90
+
+  license-compliance-frontend:
+    name: License Compliance (Frontend)
+    needs: detect-changes
+    if: needs.detect-changes.outputs.should_run_frontend == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+          cache-dependency-path: src/BDP.Registry.Web/yarn.lock
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        working-directory: src/BDP.Registry.Web
+        run: yarn install --immutable
+
+      - name: Install license-checker-rseidelsohn
+        working-directory: src/BDP.Registry.Web
+        run: yarn add --dev license-checker-rseidelsohn
+
+      - name: Generate license report
+        working-directory: src/BDP.Registry.Web
+        run: |
+          echo "## Frontend License Compliance" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          npx license-checker-rseidelsohn \
+            --json \
+            --out licenses.json \
+            --customPath <(echo '{
+              "name": "",
+              "version": "",
+              "licenses": "",
+              "repository": "",
+              "publisher": "",
+              "path": "",
+              "licenseFile": ""
+            }')
+
+          npx license-checker-rseidelsohn --csv --out licenses.csv
+          npx license-checker-rseidelsohn --summary > licenses-summary.txt
+
+          echo "License report generated successfully" >> $GITHUB_STEP_SUMMARY
+
+      - name: Check for non-compliant licenses
+        id: license-check
+        working-directory: src/BDP.Registry.Web
+        run: |
+          ALLOWED_LICENSES="${{ env.ALLOWED_LICENSES }}"
+
+          ACKNOWLEDGED_PACKAGES=""
+          if [ -f "../../.github/acknowledged-licenses-frontend.json" ]; then
+            ACKNOWLEDGED_PACKAGES=$(jq -r '.[] | .package' ../../.github/acknowledged-licenses-frontend.json 2>/dev/null | tr '\n' '|' || echo "")
+            if [ ! -z "$ACKNOWLEDGED_PACKAGES" ]; then
+              echo "📋 Loaded acknowledged packages from .github/acknowledged-licenses-frontend.json"
+            fi
+          fi
+
+          if [ ! -f "licenses.json" ]; then
+            echo "::error::License report file not found"
+            echo "has_issues=true" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+          NON_COMPLIANT_COUNT=0
+          rm -f non-compliant.txt
+
+          jq -r 'to_entries | .[] | "\(.key)|\(.value.licenses // "UNKNOWN")"' licenses.json | while IFS='|' read -r pkg_full license; do
+            if [ ! -z "$ACKNOWLEDGED_PACKAGES" ]; then
+              if echo "$ACKNOWLEDGED_PACKAGES" | grep -qF "$pkg_full"; then
+                continue
+              fi
+            fi
+
+            if [ -z "$license" ] || [ "$license" = "UNLICENSED" ] || [ "$license" = "UNKNOWN" ] || [ "$license" = "null" ]; then
+              echo "$pkg_full|UNKNOWN - No license information available" >> non-compliant.txt
+              continue
+            fi
+
+            CLEAN_LICENSE=$(echo "$license" | sed 's/[()]//g' | sed 's/ OR /,/g' | sed 's/ AND /,/g')
+
+            IS_COMPLIANT=false
+            for lic in $(echo "$CLEAN_LICENSE" | tr ',' ' '); do
+              lic=$(echo "$lic" | xargs)
+
+              if echo "$ALLOWED_LICENSES" | grep -qiE "(^|,)${lic}(,|$)"; then
+                IS_COMPLIANT=true
+                break
+              fi
+            done
+
+            if [ "$IS_COMPLIANT" = false ]; then
+              echo "$pkg_full|$license" >> non-compliant.txt
+            fi
+          done
+
+          if [ -f non-compliant.txt ]; then
+            NON_COMPLIANT_COUNT=$(wc -l < non-compliant.txt)
+          fi
+
+          if [ "$NON_COMPLIANT_COUNT" -gt 0 ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "❌ **Non-compliant licenses found ($NON_COMPLIANT_COUNT packages):**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Package | License |" >> $GITHUB_STEP_SUMMARY
+            echo "|---------|---------|" >> $GITHUB_STEP_SUMMARY
+            while IFS='|' read -r pkg_full license; do
+              echo "| \`$pkg_full\` | $license |" >> $GITHUB_STEP_SUMMARY
+            done < non-compliant.txt
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "**Allowed licenses:** $ALLOWED_LICENSES" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "To acknowledge: Create \`.github/acknowledged-licenses-frontend.json\`" >> $GITHUB_STEP_SUMMARY
+
+            ERROR_MSG="Non-compliant or unknown licenses detected in $NON_COMPLIANT_COUNT package(s). See job summary for details."
+            echo "::error title=License Compliance Failed::$ERROR_MSG"
             echo "has_issues=true" >> $GITHUB_OUTPUT
             exit 1
           else
@@ -1110,6 +880,7 @@ jobs:
             src/BDP.Registry.Web/licenses.csv
             src/BDP.Registry.Web/licenses-summary.txt
           retention-days: 90
+
   docker-build:
     name: Docker Build Test
     needs: detect-changes
