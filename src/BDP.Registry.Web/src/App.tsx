@@ -1,12 +1,9 @@
 const App = () => {
+    return (
+        <>
+            <div>BDP</div>
+        </>
+    );
+};
 
-  return (
-    <>
-      <div>
-        BDP
-      </div>
-    </>
-  )
-}
-
-export default App
+export default App;

@@ -66,13 +66,13 @@ jobs:
 
           # Check for backend changes (API, Domain, Application, Infrastructure, or their tests)
           BACKEND_CHANGED=false
-          if echo "$CHANGED_FILES" | grep -qE '^(src/BDP\.(Registry\.API|Domain|Application|Infrastructure)/|test/BDP\.(Registry\.API|Domain|Application|Infrastructure)\.Tests/)'; then
+          if echo "$CHANGED_FILES" | grep -qE '^(Directory\.Build\.props|src/BDP\.(Registry\.API|Domain|Application|Infrastructure)/|test/BDP\.(Registry\.API|Domain|Application|Infrastructure)\.Tests/)'; then
             BACKEND_CHANGED=true
           fi
 
           # Check for CLI changes (CLI or its tests)
           CLI_CHANGED=false
-          if echo "$CHANGED_FILES" | grep -qE '^(src/BDP\.(CLI|Domain|Application|Infrastructure)/|test/BDP\.(CLI|Domain|Application|Infrastructure)\.Tests/)'; then
+          if echo "$CHANGED_FILES" | grep -qE '^(Directory\.Build\.props|src/BDP\.(CLI|Domain|Application|Infrastructure)/|test/BDP\.(CLI|Domain|Application|Infrastructure)\.Tests/)'; then
             CLI_CHANGED=true
           fi
 
@@ -207,12 +207,12 @@ jobs:
           echo "## Frontend Code Formatting Check" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if yarn prettier --check .; then
+          if yarn format:check; then
             echo "✅ All files are properly formatted." >> $GITHUB_STEP_SUMMARY
           else
             echo "❌ Some files need formatting." >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Run \`yarn prettier --write .\` locally to fix formatting issues." >> $GITHUB_STEP_SUMMARY
+            echo "Run \`yarn format\` locally to fix formatting issues." >> $GITHUB_STEP_SUMMARY
             exit 1
           fi
 
@@ -461,8 +461,10 @@ jobs:
         include:
           - language: csharp
             build-mode: manual
+            config-file: ./.github/codeql/codeql-config.yml
           - language: javascript-typescript
             build-mode: none
+            config-file: ./.github/codeql/codeql-config.yml
 
     steps:
       - name: Checkout repository
@@ -473,6 +475,7 @@ jobs:
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
+          config-file: ./.github/codeql/codeql-config.yml
 
       - name: Setup .NET
         if: matrix.language == 'csharp'
@@ -640,7 +643,7 @@ jobs:
           if [ -f ".github/acknowledged-licenses-backend.json" ]; then
             ACKNOWLEDGED_PACKAGES=$(jq -r '.[] | .package' .github/acknowledged-licenses-backend.json 2>/dev/null | tr '\n' '|' || echo "")
             if [ ! -z "$ACKNOWLEDGED_PACKAGES" ]; then
-              echo "📋 Loaded acknowledged packages from .github/acknowledged-licenses-backend.json"
+              echo "Loaded acknowledged packages from .github/acknowledged-licenses-backend.json"
             fi
           fi
 
@@ -667,7 +670,7 @@ jobs:
             fi
 
             if [ -z "$license" ] || [ "$license" = "UNKNOWN" ] || [ "$license" = "null" ] || [ "$license" = "" ]; then
-              echo "⚠️ Package $pkg_full has UNKNOWN license, attempting to fetch from NuGet..."
+              echo "    Package $pkg_full has UNKNOWN license, attempting to fetch from NuGet..."
 
               LICENSE_URL=$(curl -s "https://api.nuget.org/v3/registration5-semver1/${pkg_name,,}/index.json" | \
                 jq -r --arg version "$pkg_version" \
@@ -800,7 +803,7 @@ jobs:
           if [ -f "../../.github/acknowledged-licenses-frontend.json" ]; then
             ACKNOWLEDGED_PACKAGES=$(jq -r '.[] | .package' ../../.github/acknowledged-licenses-frontend.json 2>/dev/null | tr '\n' '|' || echo "")
             if [ ! -z "$ACKNOWLEDGED_PACKAGES" ]; then
-              echo "📋 Loaded acknowledged packages from .github/acknowledged-licenses-frontend.json"
+              echo "  Loaded acknowledged packages from .github/acknowledged-licenses-frontend.json"
             fi
           fi
 
