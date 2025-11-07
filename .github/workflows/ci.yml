@@ -276,6 +276,9 @@ jobs:
             exit 1
           fi
 
+      - name: Install xmllint
+        run: sudo apt-get update && sudo apt-get install -y libxml2-utils
+
       - name: Calculate coverage
         id: coverage
         run: |
@@ -618,92 +621,92 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - name: Install dotnet-project-licenses
-        run: dotnet tool install --global dotnet-project-licenses
-
       - name: Restore dependencies
         run: dotnet restore
 
-      - name: Generate license report
+      - name: Generate and check licenses
+        id: license-check
         run: |
           echo "## Backend License Compliance" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          dotnet-project-licenses --input . --output-directory ./licenses --export-license-texts --format json
-          dotnet-project-licenses --input . --format table > licenses/licenses-summary.txt
-
-          echo "License report generated successfully" >> $GITHUB_STEP_SUMMARY
-
-      - name: Check for non-compliant licenses
-        id: license-check
-        run: |
           ALLOWED_LICENSES="${{ env.ALLOWED_LICENSES }}"
 
           ACKNOWLEDGED_PACKAGES=""
           if [ -f ".github/acknowledged-licenses-backend.json" ]; then
-            ACKNOWLEDGED_PACKAGES=$(jq -r '.[] | .package' .github/acknowledged-licenses-backend.json 2>/dev/null | tr '\n' '|' || echo "")
+            ACKNOWLEDGED_PACKAGES=$(jq -r '.[] | "\(.package)@\(.version)"' .github/acknowledged-licenses-backend.json 2>/dev/null | tr '\n' '|' || echo "")
             if [ ! -z "$ACKNOWLEDGED_PACKAGES" ]; then
-              echo "Loaded acknowledged packages from .github/acknowledged-licenses-backend.json"
+              echo "✓ Loaded acknowledged packages from .github/acknowledged-licenses-backend.json" >> $GITHUB_STEP_SUMMARY
             fi
           fi
 
-          LICENSE_FILE=$(find ./licenses -name "*.json" -type f | head -n 1)
-
-          if [ -z "$LICENSE_FILE" ] || [ ! -f "$LICENSE_FILE" ]; then
-            echo "::error::License report file not found"
-            echo "has_issues=true" >> $GITHUB_OUTPUT
-            exit 1
-          fi
-
-          echo "Using license file: $LICENSE_FILE"
-
+          mkdir -p ./licenses
           NON_COMPLIANT_COUNT=0
+          COMPLIANT_COUNT=0
           rm -f non-compliant.txt
+          rm -f packages-list.txt
 
-          jq -r '.[] | "\(.PackageName)|\(.PackageVersion)|\(.LicenseType // "UNKNOWN")"' "$LICENSE_FILE" | while IFS='|' read -r pkg_name pkg_version license; do
+          echo "Fetching package list..."
+          dotnet list package --include-transitive > packages-list.txt 2>&1
+
+          # Extract package names and versions from dotnet list output
+          # Format is typically: "  > PackageName 1.0.0"
+          grep -oP '(?<=> )\S+ \d+\.\d+.*' packages-list.txt | while read -r line; do
+            pkg_info=($line)
+            pkg_name="${pkg_info[0]}"
+            pkg_version="${pkg_info[1]}"
             pkg_full="${pkg_name}@${pkg_version}"
 
+            # Skip if acknowledged
             if [ ! -z "$ACKNOWLEDGED_PACKAGES" ]; then
               if echo "$ACKNOWLEDGED_PACKAGES" | grep -qF "$pkg_full"; then
+                echo "✓ $pkg_full (acknowledged)" >> /tmp/compliant.txt
+                ((COMPLIANT_COUNT++)) || true
                 continue
               fi
             fi
 
-            if [ -z "$license" ] || [ "$license" = "UNKNOWN" ] || [ "$license" = "null" ] || [ "$license" = "" ]; then
-              echo "    Package $pkg_full has UNKNOWN license, attempting to fetch from NuGet..."
+            # Fetch license from NuGet API
+            echo "Checking $pkg_full..."
+            LICENSE_DATA=$(curl -s "https://api.nuget.org/v3/registration5-semver1/${pkg_name,,}/index.json" 2>/dev/null | \
+              jq -r --arg version "$pkg_version" \
+              '.items[].items[] | select(.catalogEntry.version == $version) | .catalogEntry.licenseExpression // .catalogEntry.licenseUrl // "UNKNOWN"' 2>/dev/null || echo "UNKNOWN")
 
-              LICENSE_URL=$(curl -s "https://api.nuget.org/v3/registration5-semver1/${pkg_name,,}/index.json" | \
-                jq -r --arg version "$pkg_version" \
-                '.items[].items[] | select(.catalogEntry.version == $version) | .catalogEntry.licenseUrl // .catalogEntry.licenseExpression // "UNKNOWN"' 2>/dev/null || echo "UNKNOWN")
-
-              if [ "$LICENSE_URL" = "UNKNOWN" ] || [ -z "$LICENSE_URL" ]; then
-                echo "$pkg_full|UNKNOWN - Could not determine license" >> non-compliant.txt
-                continue
-              else
-                if [[ ! "$LICENSE_URL" =~ ^https?:// ]]; then
-                  license="$LICENSE_URL"
-                  echo "✓ Found license for $pkg_full: $license"
-                else
-                  echo "$pkg_full|UNKNOWN - License URL only: $LICENSE_URL" >> non-compliant.txt
-                  continue
-                fi
-              fi
+            if [ -z "$LICENSE_DATA" ] || [ "$LICENSE_DATA" = "null" ]; then
+              LICENSE_DATA="UNKNOWN"
             fi
 
-            CLEAN_LICENSE=$(echo "$license" | sed 's/[()]//g' | sed 's/ OR /,/g' | sed 's/ AND /,/g')
+            # Handle license URLs (not expressions)
+            if [[ "$LICENSE_DATA" =~ ^https?:// ]]; then
+              echo "$pkg_full|UNKNOWN (License URL only: $LICENSE_DATA)" >> non-compliant.txt
+              ((NON_COMPLIANT_COUNT++)) || true
+              continue
+            fi
+
+            # Check compliance
+            if [ "$LICENSE_DATA" = "UNKNOWN" ]; then
+              echo "$pkg_full|UNKNOWN" >> non-compliant.txt
+              ((NON_COMPLIANT_COUNT++)) || true
+              continue
+            fi
+
+            CLEAN_LICENSE=$(echo "$LICENSE_DATA" | sed 's/[()]//g' | sed 's/ OR /,/g' | sed 's/ AND /,/g')
 
             IS_COMPLIANT=false
             for lic in $(echo "$CLEAN_LICENSE" | tr ',' ' '); do
               lic=$(echo "$lic" | xargs)
-
               if echo "$ALLOWED_LICENSES" | grep -qiE "(^|,)${lic}(,|$)"; then
                 IS_COMPLIANT=true
                 break
               fi
             done
 
-            if [ "$IS_COMPLIANT" = false ]; then
-              echo "$pkg_full|$license" >> non-compliant.txt
+            if [ "$IS_COMPLIANT" = true ]; then
+              echo "✓ $pkg_full: $LICENSE_DATA" >> /tmp/compliant.txt
+              ((COMPLIANT_COUNT++)) || true
+            else
+              echo "$pkg_full|$LICENSE_DATA" >> non-compliant.txt
+              ((NON_COMPLIANT_COUNT++)) || true
             fi
           done
 
@@ -713,7 +716,7 @@ jobs:
 
           if [ "$NON_COMPLIANT_COUNT" -gt 0 ]; then
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "❌ **Non-compliant licenses found ($NON_COMPLIANT_COUNT packages):**" >> $GITHUB_STEP_SUMMARY
+            echo "❌ **Non-compliant or unknown licenses found ($NON_COMPLIANT_COUNT packages):**" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "| Package | License |" >> $GITHUB_STEP_SUMMARY
             echo "|---------|---------|" >> $GITHUB_STEP_SUMMARY
@@ -723,8 +726,25 @@ jobs:
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "**Allowed licenses:** $ALLOWED_LICENSES" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
-            echo "To acknowledge: Create \`.github/acknowledged-licenses-backend.json\`" >> $GITHUB_STEP_SUMMARY
-            echo "::error::Non-compliant or unknown licenses detected in $NON_COMPLIANT_COUNT package(s)"
+            echo "### How to acknowledge:" >> $GITHUB_STEP_SUMMARY
+            echo "Create or update \`.github/acknowledged-licenses-backend.json\` with the following format:" >> $GITHUB_STEP_SUMMARY
+            echo '```json' >> $GITHUB_STEP_SUMMARY
+            echo '[' >> $GITHUB_STEP_SUMMARY
+            while IFS='|' read -r pkg_full license; do
+              pkg_name="${pkg_full%@*}"
+              pkg_version="${pkg_full#*@}"
+              echo "  {" >> $GITHUB_STEP_SUMMARY
+              echo "    \"package\": \"$pkg_name\"," >> $GITHUB_STEP_SUMMARY
+              echo "    \"version\": \"$pkg_version\"," >> $GITHUB_STEP_SUMMARY
+              echo "    \"license\": \"$license\"," >> $GITHUB_STEP_SUMMARY
+              echo "    \"reason\": \"Add your reason here (e.g., Reviewed and approved by legal team)\"" >> $GITHUB_STEP_SUMMARY
+              echo "  }," >> $GITHUB_STEP_SUMMARY
+            done < non-compliant.txt
+            echo ']' >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+
+            ERROR_MSG="Non-compliant or unknown licenses detected in $NON_COMPLIANT_COUNT package(s). See job summary for details."
+            echo "::error title=Backend License Compliance Failed::$ERROR_MSG"
             echo "has_issues=true" >> $GITHUB_OUTPUT
             exit 1
           else
@@ -739,8 +759,7 @@ jobs:
         with:
           name: license-report-backend
           path: |
-            licenses/*.json
-            licenses/licenses-summary.txt
+            packages-list.txt
           retention-days: 90
 
   license-compliance-frontend:
