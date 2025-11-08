@@ -201,7 +201,9 @@ const Home: React.FC<Route.ComponentProps> = ({ loaderData }) => {
                         <Tabs
                             defaultValue="unix"
                             value={platform}
-                            onValueChange={(v: string) => setPlatform(v as "unix" | "windows")}
+                            onValueChange={(v: string) =>
+                                setPlatform(v as "unix" | "windows")
+                            }
                         >
                             <TabsList className="bg-transparent space-x-2">
                                 <TabsTrigger
