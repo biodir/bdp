@@ -4,11 +4,10 @@ WORKDIR /app
 
 RUN corepack enable
 
-COPY package.json ./
-COPY yarn.lock* ./
-
+COPY package.json yarn.lock* ./
 RUN yarn install --frozen-lockfile || yarn install
 
+COPY tsconfig.json vite.config.ts* react-router.config.ts* ./
 COPY . .
 
 RUN yarn build
@@ -31,7 +30,6 @@ RUN chown -R nginx:nginx /usr/share/nginx/html && \
     chown -R nginx:nginx /var/run/nginx.pid
 
 USER nginx
-
 EXPOSE 8080
 
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]

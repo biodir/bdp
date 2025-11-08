@@ -6,17 +6,5 @@
   {
     "package": "argparse@2.0.1",
     "reason": "Python-2.0 license is permissive and widely used; Python Software Foundation license allows commercial use and distribution. Acknowledged for common usage in npm ecosystem"
-  },
-  {
-    "package": "jackspeak@3.4.3",
-    "reason": "Blue Oak Model License 1.0.0 is a permissive open-source license; approved by Fedora and used widely in npm ecosystem (9M+ weekly downloads); provides all permissions while protecting contributors"
-  },
-  {
-    "package": "package-json-from-dist@1.0.1",
-    "reason": "Blue Oak Model License 1.0.0 is a permissive open-source license;  approved by Fedora and used widely in npm ecosystem (9M+ weekly downloads); provides all permissions while protecting contributors"
-  },
-  {
-    "package": "path-scurry@1.11.1",
-    "reason": "Blue Oak Model License 1.0.0 is a permissive open-source license; widely used (10M+ weekly downloads) and OSI-compliant"
   }
 ]

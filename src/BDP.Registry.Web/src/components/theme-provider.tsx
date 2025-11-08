@@ -26,15 +26,13 @@ export function ThemeProvider({
     storageKey = "bdp-theme",
     ...props
 }: ThemeProviderProps) {
-    const [theme, setTheme] = useState<Theme>(
-        () => {
-            // Check if running in browser
-            if (typeof window === "undefined") {
-                return defaultTheme;
-            }
-            return (localStorage.getItem(storageKey) as Theme) || defaultTheme;
+    const [theme, setTheme] = useState<Theme>(() => {
+        // Check if running in browser
+        if (typeof window === "undefined") {
+            return defaultTheme;
         }
-    );
+        return (localStorage.getItem(storageKey) as Theme) || defaultTheme;
+    });
 
     useEffect(() => {
         const root = window.document.documentElement;

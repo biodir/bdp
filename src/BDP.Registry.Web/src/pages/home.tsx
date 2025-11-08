@@ -3,7 +3,7 @@ import { Input } from "@/components/ui/input";
 import { useState } from "react";
 import { Search } from "lucide-react";
 import { useIntlayer } from "react-intlayer";
-import type { Route } from "./+types/index";
+import { Route } from "../+types/root";
 
 export async function clientLoader() {
     return {
