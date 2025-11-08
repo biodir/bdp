@@ -27,6 +27,7 @@ dist-ssr
 coverage/
 .vitest/
 
-.react-router/
+**/.react-router/
+**/+types/
 .intlayer/
 build/

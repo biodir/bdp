@@ -6,7 +6,10 @@ import { intlayerPlugin } from "vite-intlayer";
 
 export default defineConfig({
     plugins: [
-        !process.env.VITEST && reactRouter(),
+        !process.env.VITEST &&
+            reactRouter({
+                appDirectory: "src",
+            }),
         tailwindcss(),
         intlayerPlugin(),
     ].filter(Boolean),

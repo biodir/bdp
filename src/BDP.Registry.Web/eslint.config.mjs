@@ -9,7 +9,7 @@ import importPlugin from "eslint-plugin-import";
 
 export default [
     {
-        ignores: ["dist", "node_modules", ".react-router", "build"],
+        ignores: ["dist", "node_modules", ".react-router", "build", ".intlayer"],
     },
     js.configs.recommended,
     ...tseslint.configs.recommended,
