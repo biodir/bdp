@@ -28,4 +28,5 @@ coverage/
 .vitest/
 
 .react-router/
+.intlayer/
 build/

@@ -2,12 +2,14 @@ import { defineConfig } from "vitest/config";
 import { reactRouter } from "@react-router/dev/vite";
 import path from "path";
 import tailwindcss from "@tailwindcss/vite";
+import { intlayerPlugin } from "vite-intlayer";
 
-// https://vitejs.dev/config/
 export default defineConfig({
-    plugins: [!process.env.VITEST && reactRouter(), tailwindcss()].filter(
-        Boolean,
-    ),
+    plugins: [
+        !process.env.VITEST && reactRouter(),
+        tailwindcss(),
+        intlayerPlugin(),
+    ].filter(Boolean),
     resolve: {
         alias: {
             "@": path.resolve(__dirname, "./src"),

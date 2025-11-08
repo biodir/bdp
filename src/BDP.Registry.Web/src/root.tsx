@@ -1,4 +1,6 @@
 import { Links, Meta, Outlet, Scripts, ScrollRestoration } from "react-router";
+import { IntlayerProvider } from "react-intlayer";
+import { ThemeProvider } from "@/components/theme-provider";
 
 export function Layout({ children }: { children: React.ReactNode }) {
     return (
@@ -9,12 +11,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     name="viewport"
                     content="width=device-width, initial-scale=1.0"
                 />
-                <title>bdp</title>
+                <title>BDP - Bioinformatics Dependencies Platform</title>
                 <Meta />
                 <Links />
             </head>
             <body>
-                {children}
+                <IntlayerProvider>
+                    <ThemeProvider defaultTheme="system" storageKey="bdp-theme">
+                        {children}
+                    </ThemeProvider>
+                </IntlayerProvider>
                 <ScrollRestoration />
                 <Scripts />
             </body>

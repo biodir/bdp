@@ -4,20 +4,8 @@
     "reason": "Self-reference package, no actual license restrictions"
   },
   {
-    "package": "@csstools/color-helpers@5.1.0",
-    "reason": "MIT-0 is a permissive OSS license (also known as 0BSD), functionally equivalent to MIT; maintained by well-known CSS Tools organization"
-  },
-  {
-    "package": "@csstools/css-syntax-patches-for-csstree@1.0.14",
-    "reason": "MIT-0 is a permissive OSS license (also known as 0BSD), functionally equivalent to MIT; part of CSS Tools organization"
-  },
-  {
     "package": "argparse@2.0.1",
     "reason": "Python-2.0 license is permissive and widely used; Python Software Foundation license allows commercial use and distribution. Acknowledged for common usage in npm ecosystem"
-  },
-  {
-    "package": "caniuse-lite@1.0.30001751",
-    "reason": "CC-BY-4.0 is a Creative Commons license allowing commercial use with attribution; data package used by millions; attribution available in repo"
   },
   {
     "package": "jackspeak@3.4.3",
@@ -25,26 +13,10 @@
   },
   {
     "package": "package-json-from-dist@1.0.1",
-    "reason": "Blue Oak Model License 1.0.0 is a permissive open-source license; same as jackspeak dependency"
+    "reason": "Blue Oak Model License 1.0.0 is a permissive open-source license;  approved by Fedora and used widely in npm ecosystem (9M+ weekly downloads); provides all permissions while protecting contributors"
   },
   {
     "package": "path-scurry@1.11.1",
     "reason": "Blue Oak Model License 1.0.0 is a permissive open-source license; widely used (10M+ weekly downloads) and OSI-compliant"
-  },
-  {
-    "package": "spdx-exceptions@2.5.0",
-    "reason": "CC-BY-3.0 is a Creative Commons license; covers SPDX exception identifiers which are metadata, not code; attribution provided; widely accepted in npm ecosystem"
-  },
-  {
-    "package": "lightningcss-linux-x64-gnu@1.30.2",
-    "reason": "MPL-2.0 is a permissive OSS license"
-  },
-  {
-    "package": "lightningcss-linux-x64-musl@1.30.2",
-    "reason": "MPL-2.0 is a permissive OSS license"
-  },
-  {
-    "package": "lightningcss@1.30.2",
-    "reason": "MPL-2.0 is a permissive OSS license"
   }
 ]
