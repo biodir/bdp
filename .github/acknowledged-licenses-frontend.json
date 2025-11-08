@@ -34,5 +34,17 @@
   {
     "package": "spdx-exceptions@2.5.0",
     "reason": "CC-BY-3.0 is a Creative Commons license; covers SPDX exception identifiers which are metadata, not code; attribution provided; widely accepted in npm ecosystem"
+  },
+  {
+    "package": "lightningcss-linux-x64-gnu@1.30.2",
+    "reason": "MPL-2.0 is a permissive OSS license"
+  },
+  {
+    "package": "lightningcss-linux-x64-musl@1.30.2",
+    "reason": "MPL-2.0 is a permissive OSS license"
+  },
+  {
+    "package": "lightningcss@1.30.2",
+    "reason": "MPL-2.0 is a permissive OSS license"
   }
 ]
