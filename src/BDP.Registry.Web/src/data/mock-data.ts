@@ -1,6 +1,10 @@
 import { SearchResult } from "@/types/search";
 import { Source } from "@/types/source";
-import { SystemHealth } from "@/types/system-health";
+import type {
+    SystemHealth,
+    UptimeDataPoint,
+    HealthStatus,
+} from "@/types/system-health";
 
 // Helper to generate download history for last 30 days
 const generateDownloadHistory = (baseCount: number, variance: number = 0.3) => {
@@ -217,29 +221,6 @@ export const mockSources: Source[] = [
     },
 ];
 
-// Mock system health
-export const mockSystemHealth: SystemHealth = {
-    api: {
-        status: "operational",
-        latency: 45,
-        lastCheck: new Date().toISOString(),
-    },
-    jobs: {
-        checksumVerification: {
-            status: "running",
-            lastRun: "2024-02-05T08:30:00Z",
-            nextRun: "2024-02-05T20:30:00Z",
-            processed: 145,
-            total: 200,
-        },
-        sourceSync: {
-            status: "idle",
-            lastRun: "2024-02-05T06:00:00Z",
-            nextRun: "2024-02-06T06:00:00Z",
-        },
-    },
-};
-
 // Mock API functions
 export const mockSearchSources = (
     query: string,
@@ -275,10 +256,6 @@ export const mockGetSource = (id: string): Source | undefined => {
     return mockSources.find((source) => source.id === id);
 };
 
-export const mockGetSystemHealth = (): SystemHealth => {
-    return mockSystemHealth;
-};
-
 export const mockGetSearchSuggestions = (query: string): string[] => {
     if (!query || query.length < 2) return [];
 
@@ -297,3 +274,104 @@ export const mockGetSearchSuggestions = (query: string): string[] => {
 
     return Array.from(suggestions).slice(0, 5);
 };
+
+/**
+ * Generates uptime history for the last 90 days
+ * Simulates realistic patterns with occasional degradations and outages
+ */
+function generateUptimeHistory(
+    baseStatus: HealthStatus = "operational",
+): UptimeDataPoint[] {
+    const history: UptimeDataPoint[] = [];
+    const today = new Date();
+
+    for (let i = 89; i >= 0; i--) {
+        const date = new Date(today);
+        date.setDate(date.getDate() - i);
+
+        // Generate realistic status (95% operational, 4% degraded, 1% down)
+        let status: HealthStatus = baseStatus;
+        const random = Math.random();
+
+        if (random > 0.99) {
+            status = "down";
+        } else if (random > 0.95) {
+            status = "degraded";
+        }
+
+        history.push({
+            date: date.toISOString().split("T")[0],
+            status,
+        });
+    }
+
+    return history;
+}
+
+/**
+ * Generates mock system health data with realistic uptime patterns
+ */
+export function mockGetSystemHealth(): SystemHealth {
+    const now = new Date();
+    const hoursAgo = (hours: number) =>
+        new Date(now.getTime() - hours * 60 * 60 * 1000);
+    const hoursFromNow = (hours: number) =>
+        new Date(now.getTime() + hours * 60 * 60 * 1000);
+
+    return {
+        api: {
+            status: "operational",
+            latency: Math.floor(Math.random() * 50) + 20, // 20-70ms
+            lastCheck: now.toISOString(),
+            uptime: generateUptimeHistory("operational"),
+        },
+        jobs: {
+            checksumVerification: {
+                status: "idle",
+                lastRun: hoursAgo(2).toISOString(),
+                nextRun: hoursFromNow(4).toISOString(),
+                processed: 8542,
+                total: 10000,
+                uptime: generateUptimeHistory("operational").map((point) => ({
+                    ...point,
+                    status: point.status as HealthStatus, // Jobs use same status pattern
+                })),
+            },
+            sourceSync: {
+                status: "idle",
+                lastRun: hoursAgo(3).toISOString(),
+                nextRun: hoursFromNow(21).toISOString(), // Daily sync
+                uptime: generateUptimeHistory("operational").map((point) => ({
+                    ...point,
+                    status: point.status as HealthStatus,
+                })),
+                sources: {
+                    uniprot: {
+                        name: "UniProt",
+                        status: "idle",
+                        lastRun: hoursAgo(3).toISOString(),
+                        nextRun: hoursFromNow(21).toISOString(),
+                    },
+                    ensembl: {
+                        name: "Ensembl",
+                        status: "idle",
+                        lastRun: hoursAgo(5).toISOString(),
+                        nextRun: hoursFromNow(19).toISOString(),
+                    },
+                    ncbi: {
+                        name: "NCBI",
+                        status: "running",
+                        lastRun: hoursAgo(1).toISOString(),
+                        nextRun: hoursFromNow(23).toISOString(),
+                    },
+                    gencode: {
+                        name: "GENCODE",
+                        status: "idle",
+                        lastRun: hoursAgo(4).toISOString(),
+                        nextRun: hoursFromNow(20).toISOString(),
+                    },
+                },
+            },
+        },
+    };
+}

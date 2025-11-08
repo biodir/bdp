@@ -268,51 +268,241 @@ const Home: React.FC<Route.ComponentProps> = ({ loaderData }) => {
                 </div>
             </section>
 
-            <section className="w-full max-w-5xl mb-24 text-center px-4 sm:px-6">
-                <h2 className="text-3xl font-semibold mb-6">{why.title}</h2>
-                <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-6">
-                    {why.points.map((p: string, i: number) => (
-                        <Card key={i} className="p-6">
-                            <p className="text-muted-foreground">{p}</p>
+            <section className="w-full max-w-6xl mb-24 text-center px-4 sm:px-6">
+                <h2 className="text-3xl sm:text-4xl font-bold mb-3">
+                    {why.title}
+                </h2>
+                <p className="text-muted-foreground text-base sm:text-lg mb-12 max-w-3xl mx-auto">
+                    {why.subtitle}
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
+                    {why.useCases.map((useCase: string, i: number) => (
+                        <Card
+                            key={i}
+                            className="p-5 sm:p-6 text-left hover:shadow-lg transition-shadow duration-200"
+                        >
+                            <div className="text-3xl sm:text-4xl mb-3">
+                                {useCase.icon}
+                            </div>
+                            <h3 className="text-base sm:text-lg font-semibold mb-2">
+                                {useCase.title}
+                            </h3>
+                            <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
+                                {useCase.description}
+                            </p>
                         </Card>
                     ))}
                 </div>
             </section>
 
             {systemHealth && (
-                <section className="w-full max-w-4xl pb-20 text-center px-4 sm:px-6">
-                    <h2 className="text-3xl font-semibold mb-6">
-                        {health.title}
-                    </h2>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 sm:gap-6 justify-center">
-                        {[
-                            {
-                                label: health.api.label,
-                                status: systemHealth.api.status,
-                            },
-                            {
-                                label: health.jobs.checksumVerification,
-                                status: systemHealth.jobs.checksumVerification
-                                    .status,
-                            },
-                            {
-                                label: health.jobs.sourceSync,
-                                status: systemHealth.jobs.sourceSync.status,
-                            },
-                        ].map((item, i) => (
-                            <Card
-                                key={i}
-                                className="p-4 flex flex-col items-center"
-                            >
-                                <div
-                                    className={`w-6 h-6 rounded-sm ${getColor(item.status)}`}
-                                />
-                                <p className="mt-2 text-sm font-medium">
-                                    {item.label}
-                                </p>
-                            </Card>
-                        ))}
+                <section className="w-full max-w-6xl pb-20 px-4 sm:px-6">
+                    <div className="text-center mb-12">
+                        <h2 className="text-3xl sm:text-4xl font-bold mb-3">
+                            {health.title}
+                        </h2>
+                        <p className="text-muted-foreground text-base sm:text-lg">
+                            {health.subtitle}
+                        </p>
                     </div>
+
+                    {/* API Health */}
+                    <Card className="p-4 sm:p-6 mb-6">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-2">
+                            <div className="flex items-center gap-3">
+                                <div
+                                    className={`w-3 h-3 rounded-full ${getColor(systemHealth.api.status)}`}
+                                />
+                                <h3 className="text-lg sm:text-xl font-semibold">
+                                    {health.api.label}
+                                </h3>
+                            </div>
+                            <div className="text-xs sm:text-sm text-muted-foreground">
+                                {health.uptime}
+                            </div>
+                        </div>
+                        <div className="flex gap-1 mb-3 overflow-x-auto pb-2">
+                            {systemHealth.api.uptime.map((point, i) => (
+                                <div
+                                    key={i}
+                                    className={`w-2 h-8 sm:w-3 sm:h-10 rounded-sm ${getColor(point.status)} flex-shrink-0`}
+                                    title={`${point.date}: ${point.status}`}
+                                />
+                            ))}
+                        </div>
+                        <div className="flex flex-wrap gap-4 text-xs sm:text-sm text-muted-foreground">
+                            <span>
+                                {health.api.latency}: {systemHealth.api.latency}
+                                ms
+                            </span>
+                            <span>•</span>
+                            <span>
+                                Last check:{" "}
+                                {new Date(
+                                    systemHealth.api.lastCheck,
+                                ).toLocaleString("en-US", {
+                                    timeZone:
+                                        Intl.DateTimeFormat().resolvedOptions()
+                                            .timeZone,
+                                    dateStyle: "short",
+                                    timeStyle: "short",
+                                })}{" "}
+                                {
+                                    Intl.DateTimeFormat().resolvedOptions()
+                                        .timeZone
+                                }
+                            </span>
+                        </div>
+                    </Card>
+
+                    {/* Checksum Verification Job */}
+                    <Card className="p-4 sm:p-6 mb-6">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-2">
+                            <div className="flex items-center gap-3">
+                                <div
+                                    className={`w-3 h-3 rounded-full ${getColor(systemHealth.jobs.checksumVerification.status)}`}
+                                />
+                                <h3 className="text-lg sm:text-xl font-semibold">
+                                    {health.jobs.checksumVerification}
+                                </h3>
+                            </div>
+                            <div className="text-xs sm:text-sm text-muted-foreground">
+                                {health.uptime}
+                            </div>
+                        </div>
+                        <div className="flex gap-1 mb-3 overflow-x-auto pb-2">
+                            {systemHealth.jobs.checksumVerification.uptime.map(
+                                (point, i) => (
+                                    <div
+                                        key={i}
+                                        className={`w-2 h-8 sm:w-3 sm:h-10 rounded-sm ${getColor(point.status === "operational" ? "idle" : point.status)} flex-shrink-0`}
+                                        title={`${point.date}: ${point.status}`}
+                                    />
+                                ),
+                            )}
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs sm:text-sm text-muted-foreground">
+                            <span>
+                                {health.jobs.lastRun}:{" "}
+                                {new Date(
+                                    systemHealth.jobs.checksumVerification.lastRun,
+                                ).toLocaleString("en-US", {
+                                    timeZone:
+                                        Intl.DateTimeFormat().resolvedOptions()
+                                            .timeZone,
+                                    dateStyle: "short",
+                                    timeStyle: "short",
+                                })}
+                            </span>
+                            <span>
+                                {health.jobs.nextRun}:{" "}
+                                {new Date(
+                                    systemHealth.jobs.checksumVerification.nextRun,
+                                ).toLocaleString("en-US", {
+                                    timeZone:
+                                        Intl.DateTimeFormat().resolvedOptions()
+                                            .timeZone,
+                                    dateStyle: "short",
+                                    timeStyle: "short",
+                                })}
+                            </span>
+                            <span>
+                                {health.jobs.progress}:{" "}
+                                {
+                                    systemHealth.jobs.checksumVerification
+                                        .processed
+                                }
+                                /{systemHealth.jobs.checksumVerification.total}
+                            </span>
+                            <span className="hidden sm:block">
+                                {
+                                    Intl.DateTimeFormat().resolvedOptions()
+                                        .timeZone
+                                }
+                            </span>
+                        </div>
+                    </Card>
+
+                    {/* Source Synchronization */}
+                    <Card className="p-4 sm:p-6">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-2">
+                            <div className="flex items-center gap-3">
+                                <div
+                                    className={`w-3 h-3 rounded-full ${getColor(systemHealth.jobs.sourceSync.status)}`}
+                                />
+                                <h3 className="text-lg sm:text-xl font-semibold">
+                                    {health.jobs.sourceSync.label}
+                                </h3>
+                            </div>
+                            <div className="text-xs sm:text-sm text-muted-foreground">
+                                {health.uptime}
+                            </div>
+                        </div>
+                        <div className="flex gap-1 mb-4 overflow-x-auto pb-2">
+                            {systemHealth.jobs.sourceSync.uptime.map(
+                                (point, i) => (
+                                    <div
+                                        key={i}
+                                        className={`w-2 h-8 sm:w-3 sm:h-10 rounded-sm ${getColor(point.status === "operational" ? "idle" : point.status)} flex-shrink-0`}
+                                        title={`${point.date}: ${point.status}`}
+                                    />
+                                ),
+                            )}
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
+                            {Object.entries(
+                                systemHealth.jobs.sourceSync.sources,
+                            ).map(([key, source]) => (
+                                <div
+                                    key={key}
+                                    className="border rounded-lg p-3 sm:p-4"
+                                >
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <div
+                                            className={`w-2 h-2 rounded-full ${getColor(source.status)}`}
+                                        />
+                                        <h4 className="font-medium text-sm sm:text-base">
+                                            {
+                                                health.jobs.sourceSync.sources[
+                                                    key as keyof typeof health.jobs.sourceSync.sources
+                                                ]
+                                            }
+                                        </h4>
+                                    </div>
+                                    <div className="space-y-1 text-xs text-muted-foreground">
+                                        <p className="truncate">
+                                            {health.jobs.lastRun}:{" "}
+                                            {new Date(
+                                                source.lastRun,
+                                            ).toLocaleString("en-US", {
+                                                timeZone:
+                                                    Intl.DateTimeFormat().resolvedOptions()
+                                                        .timeZone,
+                                                month: "short",
+                                                day: "numeric",
+                                                hour: "2-digit",
+                                                minute: "2-digit",
+                                            })}
+                                        </p>
+                                        <p className="truncate">
+                                            {health.jobs.nextRun}:{" "}
+                                            {new Date(
+                                                source.nextRun,
+                                            ).toLocaleString("en-US", {
+                                                timeZone:
+                                                    Intl.DateTimeFormat().resolvedOptions()
+                                                        .timeZone,
+                                                month: "short",
+                                                day: "numeric",
+                                                hour: "2-digit",
+                                                minute: "2-digit",
+                                            })}
+                                        </p>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </Card>
                 </section>
             )}
         </div>

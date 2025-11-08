@@ -61,25 +61,118 @@ const homeContent = {
                 zh: "为什么选择 BDP？",
                 ja: "なぜ BDP？",
             }),
-            points: [
-                t({
-                    en: "Unified registry for bioinformatics tools and data sources.",
-                    de: "Einheitliches Register für Bioinformatik-Tools und Datenquellen.",
-                    zh: "统一的生物信息学工具和数据源注册表。",
-                    ja: "バイオインフォマティクスツールとデータソースの統一レジストリ。",
-                }),
-                t({
-                    en: "Reproducible workflows powered by dependency versioning.",
-                    de: "Versionsverwaltung für reproduzierbare Workflows.",
-                    zh: "通过依赖版本控制实现可重现的工作流程。",
-                    ja: "依存関係のバージョン管理により再現可能なワークフロー。",
-                }),
-                t({
-                    en: "Secure and verifiable source integrity checks.",
-                    de: "Sichere und überprüfbare Quellintegritätsprüfungen.",
-                    zh: "安全且可验证的数据源完整性检查。",
-                    ja: "安全で検証可能なソース整合性チェック。",
-                }),
+            subtitle: t({
+                en: "Solving bioinformatician pain points with modern dependency management",
+                de: "Lösung der Probleme von Bioinformatikern mit moderner Abhängigkeitsverwaltung",
+                zh: "通过现代依赖管理解决生物信息学家的痛点",
+                ja: "最新の依存関係管理でバイオインフォマティシャンの課題を解決",
+            }),
+            useCases: [
+                {
+                    title: t({
+                        en: "Complete Reproducibility",
+                        de: "Vollständige Reproduzierbarkeit",
+                        zh: "完全可重现性",
+                        ja: "完全な再現性",
+                    }),
+                    description: t({
+                        en: "Lock files for data, not just code. Version everything from reference genomes to annotation databases.",
+                        de: "Lock-Dateien für Daten, nicht nur Code. Versionieren Sie alles von Referenzgenomen bis zu Annotationsdatenbanken.",
+                        zh: "数据锁定文件，不仅仅是代码。版本控制从参考基因组到注释数据库的所有内容。",
+                        ja: "コードだけでなくデータのロックファイル。参照ゲノムからアノテーションデータベースまですべてをバージョン管理。",
+                    }),
+                    icon: "🔒",
+                },
+                {
+                    title: t({
+                        en: "Seamless Collaboration",
+                        de: "Nahtlose Zusammenarbeit",
+                        zh: "无缝协作",
+                        ja: "シームレスなコラボレーション",
+                    }),
+                    description: t({
+                        en: "Share exact analysis environments across teams. No more 'works on my machine' moments.",
+                        de: "Teilen Sie exakte Analyseumgebungen im Team. Keine 'funktioniert auf meiner Maschine' Momente mehr.",
+                        zh: '在团队间共享精确的分析环境。不再出现"在我的机器上能运行"的问题。',
+                        ja: "チーム全体で正確な分析環境を共有。「私のマシンでは動く」問題がなくなります。",
+                    }),
+                    icon: "🤝",
+                },
+                {
+                    title: t({
+                        en: "Smart Resource Management",
+                        de: "Intelligente Ressourcenverwaltung",
+                        zh: "智能资源管理",
+                        ja: "スマートリソース管理",
+                    }),
+                    description: t({
+                        en: "Shared cache between team members. Download once, use everywhere. Save bandwidth and storage.",
+                        de: "Gemeinsamer Cache zwischen Teammitgliedern. Einmal herunterladen, überall verwenden. Sparen Sie Bandbreite und Speicherplatz.",
+                        zh: "团队成员之间的共享缓存。下载一次，随处使用。节省带宽和存储空间。",
+                        ja: "チームメンバー間で共有キャッシュ。一度ダウンロードすればどこでも使用可能。帯域幅とストレージを節約。",
+                    }),
+                    icon: "💾",
+                },
+                {
+                    title: t({
+                        en: "Automated Citation",
+                        de: "Automatisierte Zitation",
+                        zh: "自动引用",
+                        ja: "自動引用",
+                    }),
+                    description: t({
+                        en: "Generate proper citations for every data source. Never miss a reference in your publications.",
+                        de: "Erstellen Sie korrekte Zitate für jede Datenquelle. Verpassen Sie keine Referenz in Ihren Publikationen.",
+                        zh: "为每个数据源生成正确的引用。永远不会在出版物中遗漏参考文献。",
+                        ja: "すべてのデータソースに対して適切な引用を生成。論文で参考文献を見逃すことがありません。",
+                    }),
+                    icon: "📚",
+                },
+                {
+                    title: t({
+                        en: "Integrity Verification",
+                        de: "Integritätsüberprüfung",
+                        zh: "完整性验证",
+                        ja: "整合性検証",
+                    }),
+                    description: t({
+                        en: "Automatic checksum validation detects tampering and corruption. Audit trails for compliance.",
+                        de: "Automatische Prüfsummenvalidierung erkennt Manipulationen und Beschädigungen. Audit-Trails für Compliance.",
+                        zh: "自动校验和验证检测篡改和损坏。合规性审计跟踪。",
+                        ja: "自動チェックサム検証で改ざんや破損を検出。コンプライアンスのための監査証跡。",
+                    }),
+                    icon: "🛡️",
+                },
+                {
+                    title: t({
+                        en: "Unified Discovery",
+                        de: "Einheitliche Entdeckung",
+                        zh: "统一发现",
+                        ja: "統一された検索",
+                    }),
+                    description: t({
+                        en: "Search across all bioinformatics resources in one place. Find what you need instantly.",
+                        de: "Durchsuchen Sie alle Bioinformatik-Ressourcen an einem Ort. Finden Sie sofort, was Sie brauchen.",
+                        zh: "在一个地方搜索所有生物信息学资源。即时找到所需内容。",
+                        ja: "すべてのバイオインフォマティクスリソースを一か所で検索。必要なものをすぐに見つけます。",
+                    }),
+                    icon: "🔍",
+                },
+                {
+                    title: t({
+                        en: "Workflow Integration",
+                        de: "Workflow-Integration",
+                        zh: "工作流集成",
+                        ja: "ワークフロー統合",
+                    }),
+                    description: t({
+                        en: "Native support for Nextflow, Snakemake, and CWL. Plug into your existing pipelines effortlessly.",
+                        de: "Native Unterstützung für Nextflow, Snakemake und CWL. Integrieren Sie sich mühelos in Ihre bestehenden Pipelines.",
+                        zh: "原生支持 Nextflow、Snakemake 和 CWL。轻松插入现有管道。",
+                        ja: "Nextflow、Snakemake、CWLのネイティブサポート。既存のパイプラインに簡単に統合。",
+                    }),
+                    icon: "⚡",
+                },
             ],
         },
         search: {
@@ -129,12 +222,24 @@ const homeContent = {
                 zh: "系统健康状况",
                 ja: "システムの健全性",
             }),
+            subtitle: t({
+                en: "Real-time monitoring of all BDP services",
+                de: "Echtzeitüberwachung aller BDP-Dienste",
+                zh: "实时监控所有 BDP 服务",
+                ja: "すべてのBDPサービスのリアルタイム監視",
+            }),
+            uptime: t({
+                en: "Last 90 days",
+                de: "Letzte 90 Tage",
+                zh: "过去 90 天",
+                ja: "過去90日間",
+            }),
             api: {
                 label: t({
-                    en: "API Status",
-                    de: "API-Status",
-                    zh: "API 状态",
-                    ja: "API ステータス",
+                    en: "API Service",
+                    de: "API-Dienst",
+                    zh: "API 服务",
+                    ja: "APIサービス",
                 }),
                 operational: t({
                     en: "Operational",
@@ -174,12 +279,40 @@ const homeContent = {
                     zh: "校验和验证",
                     ja: "チェックサム検証",
                 }),
-                sourceSync: t({
-                    en: "Source Synchronization",
-                    de: "Quellensynchronisierung",
-                    zh: "数据源同步",
-                    ja: "ソース同期",
-                }),
+                sourceSync: {
+                    label: t({
+                        en: "Source Synchronization",
+                        de: "Quellensynchronisierung",
+                        zh: "数据源同步",
+                        ja: "ソース同期",
+                    }),
+                    sources: {
+                        uniprot: t({
+                            en: "UniProt Sync",
+                            de: "UniProt-Sync",
+                            zh: "UniProt 同步",
+                            ja: "UniProt同期",
+                        }),
+                        ensembl: t({
+                            en: "Ensembl Sync",
+                            de: "Ensembl-Sync",
+                            zh: "Ensembl 同步",
+                            ja: "Ensembl同期",
+                        }),
+                        ncbi: t({
+                            en: "NCBI Sync",
+                            de: "NCBI-Sync",
+                            zh: "NCBI 同步",
+                            ja: "NCBI同期",
+                        }),
+                        gencode: t({
+                            en: "GENCODE Sync",
+                            de: "GENCODE-Sync",
+                            zh: "GENCODE 同步",
+                            ja: "GENCODE同期",
+                        }),
+                    },
+                },
                 running: t({
                     en: "Running",
                     de: "Läuft",
