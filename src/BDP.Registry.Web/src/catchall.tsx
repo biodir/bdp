@@ -1,5 +1,5 @@
 import App from "./App";
 
-export default function Component() {
+export const Component = () => {
     return <App />;
-}
+};

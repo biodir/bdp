@@ -1,24 +1,32 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useState } from "react";
-import type { LoaderFunctionArgs } from "react-router";
 import { Package, Search, TrendingUp, Users } from "lucide-react";
+import type { LoaderFunctionArgs } from "react-router";
 
-export async function clientLoader({}: LoaderFunctionArgs) {
+export async function clientLoader({ params, request }: LoaderFunctionArgs) {
+    // TODO: Use
+    void params;
+    void request;
+
     return {
         title: "Home",
     };
 }
 
-export default function Component({}: {
+export default function Component({
+    loaderData,
+}: {
     loaderData: Awaited<ReturnType<typeof clientLoader>>;
 }) {
+    // TODO: Use
+    void loaderData;
+
     const [searchQuery, setSearchQuery] = useState("");
 
     const handleSearch = (e: React.FormEvent) => {
         e.preventDefault();
         // TODO: Implement search functionality
-        console.log("Searching for:", searchQuery);
     };
 
     return (
