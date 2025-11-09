@@ -2,7 +2,7 @@ app = 'bdp-registry-migrations-dev'
 primary_region = 'ams'
 
 [build]
-dockerfile = 'src/BDP.Registry.Persistence/Dockerfile.migrations'
+dockerfile = '../../src/BDP.Registry.Persistence/Dockerfile.migrations'
 
 [deploy]
 strategy = 'immediate'
@@ -14,5 +14,5 @@ cpu_kind = 'shared'
 cpus = 1
 
 [[services]]
-protocol = ''
-internal_port = 0
+internal_port = 80
+protocol = "tcp"

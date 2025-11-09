@@ -276,22 +276,31 @@ const Home: React.FC<Route.ComponentProps> = ({ loaderData }) => {
                     {why.subtitle}
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
-                    {why.useCases.map((useCase: { icon: string, title: string, description: string }, i: number) => (
-                        <Card
-                            key={i}
-                            className="p-5 sm:p-6 text-left hover:shadow-lg transition-shadow duration-200"
-                        >
-                            <div className="text-3xl sm:text-4xl mb-3">
-                                {useCase.icon}
-                            </div>
-                            <h3 className="text-base sm:text-lg font-semibold mb-2">
-                                {useCase.title}
-                            </h3>
-                            <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
-                                {useCase.description}
-                            </p>
-                        </Card>
-                    ))}
+                    {why.useCases.map(
+                        (
+                            useCase: {
+                                icon: string;
+                                title: string;
+                                description: string;
+                            },
+                            i: number,
+                        ) => (
+                            <Card
+                                key={i}
+                                className="p-5 sm:p-6 text-left hover:shadow-lg transition-shadow duration-200"
+                            >
+                                <div className="text-3xl sm:text-4xl mb-3">
+                                    {useCase.icon}
+                                </div>
+                                <h3 className="text-base sm:text-lg font-semibold mb-2">
+                                    {useCase.title}
+                                </h3>
+                                <p className="text-sm sm:text-base text-muted-foreground leading-relaxed">
+                                    {useCase.description}
+                                </p>
+                            </Card>
+                        ),
+                    )}
                 </div>
             </section>
 

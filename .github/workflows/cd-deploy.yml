@@ -1,6 +1,6 @@
 name: CD - Deploy
 
-run-name: "Deploy to ${{ github.event.inputs.environment || 'dev' }}"
+run-name: "CD #${{ github.run_number }} - Deploy to ${{ github.event.inputs.environment || 'dev' }}"
 
 on:
   workflow_dispatch:

@@ -1,6 +1,6 @@
 name: CD - Release
 
-run-name: "Release v${{ github.event.inputs.version || 'auto' }}"
+run-name: "CD #${{ github.run_number }} - Release v${{ github.event.inputs.version || 'auto' }}"
 
 on:
   workflow_dispatch:

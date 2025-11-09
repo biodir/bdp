@@ -1,5 +1,6 @@
 using BDP.Registry.Persistence.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Internal;
 
 namespace BDP.Registry.Persistence;
 
@@ -9,7 +10,7 @@ public class RegistryDbContext : DbContext
     {
     }
 
-    public DbSet<RegistryItem> RegistryItems { get; set; }
+    public required DbSet<RegistryItem> RegistryItems { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
