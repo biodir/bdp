@@ -1,0 +1,25 @@
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+WORKDIR /src
+
+COPY ["src/BDP.Registry.Persistence/BDP.Registry.Persistence.csproj", "src/BDP.Registry.Persistence/"]
+RUN dotnet restore "src/BDP.Registry.Persistence/BDP.Registry.Persistence.csproj"
+
+COPY src/BDP.Registry.Persistence/ src/BDP.Registry.Persistence/
+
+RUN dotnet tool install --global dotnet-ef --version 9.0.0
+ENV PATH="$PATH:/root/.dotnet/tools"
+
+WORKDIR /src/src/BDP.Registry.Persistence
+
+RUN dotnet ef migrations bundle \
+    --configuration Release \
+    --self-contained \
+    --runtime linux-x64 \
+    --output /app/efbundle
+
+FROM mcr.microsoft.com/dotnet/runtime-deps:9.0-alpine AS final
+WORKDIR /app
+COPY --from=build /app/efbundle .
+RUN chmod +x efbundle
+
+ENTRYPOINT ["./efbundle"]

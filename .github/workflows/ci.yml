@@ -29,9 +29,13 @@ jobs:
       backend: ${{ steps.changes.outputs.backend }}
       cli: ${{ steps.changes.outputs.cli }}
       frontend: ${{ steps.changes.outputs.frontend }}
+      persistence: ${{ steps.changes.outputs.persistence }}
+      jobs: ${{ steps.changes.outputs.jobs }}
       should_run_backend: ${{ steps.changes.outputs.should_run_backend }}
       should_run_cli: ${{ steps.changes.outputs.should_run_cli }}
       should_run_frontend: ${{ steps.changes.outputs.should_run_frontend }}
+      should_run_jobs: ${{ steps.changes.outputs.should_run_jobs }}
+      should_run_persistence: ${{ steps.changes.outputs.should_run_persistence }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -64,15 +68,27 @@ jobs:
             echo "⚠️ CI workflow file changed - running all jobs"
           fi
 
-          # Check for backend changes (API, Domain, Application, Infrastructure, or their tests)
+          # Check for persistence changes (affects both API and Jobs)
+          PERSISTENCE_CHANGED=false
+          if echo "$CHANGED_FILES" | grep -qE '^src/BDP\.Registry\.Persistence/'; then
+            PERSISTENCE_CHANGED=true
+          fi
+
+          # Check for backend changes (API, Domain, Application, Infrastructure, Persistence, or their tests)
           BACKEND_CHANGED=false
-          if echo "$CHANGED_FILES" | grep -qE '^(Directory\.Build\.props|src/BDP\.(Registry\.API|Domain|Application|Infrastructure)/|test/BDP\.(Registry\.API|Domain|Application|Infrastructure)\.Tests/)'; then
+          if echo "$CHANGED_FILES" | grep -qE '^(Directory\.Build\.props|src/BDP\.(Registry\.API|Registry\.Persistence|Domain|Application|Infrastructure)/|test/BDP\.(Registry\.API|Domain|Application|Infrastructure)\.Tests/)'; then
             BACKEND_CHANGED=true
+          fi
+
+          # Check for Jobs changes (Jobs or Persistence)
+          JOBS_CHANGED=false
+          if echo "$CHANGED_FILES" | grep -qE '^(Directory\.Build\.props|src/BDP\.(Registry\.Jobs|Registry\.Persistence|Domain|Application|Infrastructure)/|test/BDP\.Registry\.Jobs\.Tests/)'; then
+            JOBS_CHANGED=true
           fi
 
           # Check for CLI changes (CLI or its tests)
           CLI_CHANGED=false
-          if echo "$CHANGED_FILES" | grep -qE '^(Directory\.Build\.props|src/BDP\.(CLI|Domain|Application|Infrastructure)/|test/BDP\.(CLI|Domain|Application|Infrastructure)\.Tests/)'; then
+          if echo "$CHANGED_FILES" | grep -qE '^(Directory\.Build\.props|src/BDP\.CLI/|test/BDP\.CLI\.Tests/)'; then
             CLI_CHANGED=true
           fi
 
@@ -85,26 +101,34 @@ jobs:
           # If CI workflow changed, force all checks to run
           if [ "$CI_WORKFLOW_CHANGED" = true ]; then
             BACKEND_CHANGED=true
+            JOBS_CHANGED=true
             CLI_CHANGED=true
             FRONTEND_CHANGED=true
+            PERSISTENCE_CHANGED=true
           fi
 
           # Set outputs
           echo "backend=$BACKEND_CHANGED" >> $GITHUB_OUTPUT
           echo "cli=$CLI_CHANGED" >> $GITHUB_OUTPUT
           echo "frontend=$FRONTEND_CHANGED" >> $GITHUB_OUTPUT
+          echo "persistence=$PERSISTENCE_CHANGED" >> $GITHUB_OUTPUT
+          echo "jobs=$JOBS_CHANGED" >> $GITHUB_OUTPUT
           echo "should_run_backend=$BACKEND_CHANGED" >> $GITHUB_OUTPUT
           echo "should_run_cli=$CLI_CHANGED" >> $GITHUB_OUTPUT
           echo "should_run_frontend=$FRONTEND_CHANGED" >> $GITHUB_OUTPUT
+          echo "should_run_jobs=$JOBS_CHANGED" >> $GITHUB_OUTPUT
+          echo "should_run_persistence=$PERSISTENCE_CHANGED" >> $GITHUB_OUTPUT
 
           echo "Backend changed: $BACKEND_CHANGED"
           echo "CLI changed: $CLI_CHANGED"
           echo "Frontend changed: $FRONTEND_CHANGED"
+          echo "Persistence changed: $PERSISTENCE_CHANGED"
+          echo "Jobs changed: $JOBS_CHANGED"
 
   lint-backend:
     name: Lint Backend
     needs: detect-changes
-    if: needs.detect-changes.outputs.should_run_backend == 'true' || needs.detect-changes.outputs.should_run_cli == 'true'
+    if: needs.detect-changes.outputs.should_run_backend == 'true' || needs.detect-changes.outputs.should_run_cli == 'true' || needs.detect-changes.outputs.should_run_jobs == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -317,10 +341,10 @@ jobs:
           path: ./TestResults/**/coverage.opencover.xml
           retention-days: 30
 
-  build-and-test-cli:
-    name: Build & Test CLI
+  build-and-test-jobs:
+    name: Build & Test Jobs
     needs: detect-changes
-    if: needs.detect-changes.outputs.should_run_cli == 'true'
+    if: needs.detect-changes.outputs.should_run_jobs == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -346,18 +370,86 @@ jobs:
 
       - name: Run tests
         run: |
+          echo "## Jobs Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ -d "test/BDP.Registry.Jobs.Tests" ]; then
+            if dotnet test test/BDP.Registry.Jobs.Tests/BDP.Registry.Jobs.Tests.csproj \
+              --configuration Release \
+              --no-build \
+              --logger "trx;LogFileName=test-results.trx" \
+              --results-directory ./TestResults; then
+              echo "✅ All Jobs tests passed." >> $GITHUB_STEP_SUMMARY
+            else
+              echo "❌ Jobs tests failed." >> $GITHUB_STEP_SUMMARY
+              exit 1
+            fi
+          else
+            echo "⏭️ No Jobs tests found (test/BDP.Registry.Jobs.Tests does not exist)" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: test-results-jobs
+          path: ./TestResults/*.trx
+          retention-days: 30
+
+  build-and-test-cli:
+    name: Build & Test CLI
+    needs: detect-changes
+    if: needs.detect-changes.outputs.should_run_cli == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build CLI
+        run: |
+          echo "## CLI Build" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if dotnet build src/BDP.CLI/BDP.CLI.csproj --configuration Release --no-restore; then
+            echo "✅ CLI build successful." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ CLI build failed." >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+      - name: Run tests
+        run: |
           echo "## CLI Test Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if dotnet test test/BDP.CLI.Tests/BDP.CLI.Tests.csproj \
-            --configuration Release \
-            --no-build \
-            --logger "trx;LogFileName=test-results.trx" \
-            --results-directory ./TestResults; then
-            echo "✅ All CLI tests passed." >> $GITHUB_STEP_SUMMARY
+          if [ -d "test/BDP.CLI.Tests" ]; then
+            if dotnet test test/BDP.CLI.Tests/BDP.CLI.Tests.csproj \
+              --configuration Release \
+              --no-build \
+              --logger "trx;LogFileName=test-results.trx" \
+              --results-directory ./TestResults; then
+              echo "✅ All CLI tests passed." >> $GITHUB_STEP_SUMMARY
+            else
+              echo "❌ CLI tests failed." >> $GITHUB_STEP_SUMMARY
+              exit 1
+            fi
           else
-            echo "❌ CLI tests failed." >> $GITHUB_STEP_SUMMARY
-            exit 1
+            echo "⏭️ No CLI tests found (test/BDP.CLI.Tests does not exist)" >> $GITHUB_STEP_SUMMARY
           fi
 
       - name: Upload test results
@@ -367,6 +459,27 @@ jobs:
           name: test-results-cli
           path: ./TestResults/*.trx
           retention-days: 30
+
+      - name: Test CLI publish
+        run: |
+          echo "## CLI Publish Test" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          for runtime in linux-x64 osx-arm64 win-x64; do
+            echo "Testing publish for $runtime..."
+            if dotnet publish src/BDP.CLI/BDP.CLI.csproj \
+              -c Release \
+              -r $runtime \
+              --self-contained true \
+              -p:PublishSingleFile=true \
+              -p:PublishTrimmed=true \
+              -o ./test-publish/$runtime; then
+              echo "✅ CLI publish successful for $runtime" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "❌ CLI publish failed for $runtime" >> $GITHUB_STEP_SUMMARY
+              exit 1
+            fi
+          done
 
   build-and-test-frontend:
     name: Build & Test Frontend
@@ -451,7 +564,7 @@ jobs:
   codeql-analysis:
     name: CodeQL Analysis
     needs: detect-changes
-    if: needs.detect-changes.outputs.should_run_backend == 'true' || needs.detect-changes.outputs.should_run_cli == 'true' || needs.detect-changes.outputs.should_run_frontend == 'true'
+    if: needs.detect-changes.outputs.should_run_backend == 'true' || needs.detect-changes.outputs.should_run_cli == 'true' || needs.detect-changes.outputs.should_run_frontend == 'true' || needs.detect-changes.outputs.should_run_jobs == 'true'
     runs-on: ubuntu-latest
     permissions:
       security-events: write
@@ -500,7 +613,7 @@ jobs:
   dependency-audit-backend:
     name: Dependency Audit (Backend)
     needs: detect-changes
-    if: needs.detect-changes.outputs.should_run_backend == 'true' || needs.detect-changes.outputs.should_run_cli == 'true'
+    if: needs.detect-changes.outputs.should_run_backend == 'true' || needs.detect-changes.outputs.should_run_cli == 'true' || needs.detect-changes.outputs.should_run_jobs == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -611,7 +724,7 @@ jobs:
   license-compliance-backend:
     name: License Compliance (Backend)
     needs: detect-changes
-    if: needs.detect-changes.outputs.should_run_backend == 'true' || needs.detect-changes.outputs.should_run_cli == 'true'
+    if: needs.detect-changes.outputs.should_run_backend == 'true' || needs.detect-changes.outputs.should_run_cli == 'true' || needs.detect-changes.outputs.should_run_jobs == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -903,7 +1016,7 @@ jobs:
   docker-build:
     name: Docker Build Test
     needs: detect-changes
-    if: needs.detect-changes.outputs.should_run_backend == 'true' || needs.detect-changes.outputs.should_run_frontend == 'true'
+    if: needs.detect-changes.outputs.should_run_backend == 'true' || needs.detect-changes.outputs.should_run_frontend == 'true' || needs.detect-changes.outputs.should_run_jobs == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -919,6 +1032,28 @@ jobs:
           file: src/BDP.Registry.API/Dockerfile
           push: false
           tags: bdp-registry-api:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build Registry Jobs Docker image
+        if: needs.detect-changes.outputs.should_run_jobs == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: src/BDP.Registry.Jobs/Dockerfile
+          push: false
+          tags: bdp-registry-jobs:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build Migrations Docker image
+        if: needs.detect-changes.outputs.persistence == 'true'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: src/BDP.Registry.Persistence/Dockerfile.migrations
+          push: false
+          tags: bdp-registry-migrations:test
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -945,6 +1080,7 @@ jobs:
       - lint-backend
       - lint-frontend
       - build-and-test-backend
+      - build-and-test-jobs
       - build-and-test-cli
       - build-and-test-frontend
       - coverage-gate
@@ -984,6 +1120,7 @@ jobs:
           check_job "${{ needs.lint-backend.result }}" "Linting (Backend)" "" || FAILED=true
           check_job "${{ needs.lint-frontend.result }}" "Linting (Frontend)" "" || FAILED=true
           check_job "${{ needs.build-and-test-backend.result }}" "Build & Test Backend" "" || FAILED=true
+          check_job "${{ needs.build-and-test-jobs.result }}" "Build & Test Jobs" "" || FAILED=true
           check_job "${{ needs.build-and-test-cli.result }}" "Build & Test CLI" "" || FAILED=true
           check_job "${{ needs.build-and-test-frontend.result }}" "Build & Test Frontend" "" || FAILED=true
           check_job "${{ needs.coverage-gate.result }}" "Coverage Gate" " (${{ needs.build-and-test-backend.outputs.coverage-percentage }}%)" || FAILED=true

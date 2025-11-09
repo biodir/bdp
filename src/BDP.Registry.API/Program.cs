@@ -1,10 +1,6 @@
-using System;
 using System.Globalization;
 using BDP.Registry.API.Common.Extensions;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
+using BDP.Registry.Persistence;
 using Serilog;
 using Serilog.Events;
 
@@ -21,10 +17,12 @@ try
     var builder = WebApplication.CreateBuilder(args);
 
     builder.ConfigureSerilog();
-    builder.AddRegistryDatabase();
     builder.AddHealthCheck();
     builder.AddCORS();
 
+    builder.Services.AddRegistryPersistence(
+        builder.Configuration.GetConnectionString("")!,
+        builder.Environment.IsDevelopment());
     builder.Services.AddEndpointsApiExplorer();
     builder.Services.AddOpenAPI();
     builder.Services.AddProblemDetails();

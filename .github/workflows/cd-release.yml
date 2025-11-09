@@ -1,0 +1,229 @@
+name: CD - Release
+
+run-name: "Release v${{ github.event.inputs.version || 'auto' }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 1.0.0)'
+        required: true
+        type: string
+      prerelease:
+        description: 'Mark as pre-release'
+        required: true
+        type: boolean
+        default: false
+
+env:
+  DOTNET_VERSION: '9.0.x'
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  validate:
+    name: Validate Release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate version
+        id: version
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+
+          if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?$'; then
+            echo "::error::Invalid version format. Use semver: 1.0.0 or 1.0.0-beta.1"
+            exit 1
+          fi
+
+          TAG="v${VERSION}"
+
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "::error::Tag $TAG already exists"
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+          echo "## Release v${VERSION}" >> $GITHUB_STEP_SUMMARY
+          echo "Tag: \`$TAG\`" >> $GITHUB_STEP_SUMMARY
+
+  build-images:
+    name: Build Docker Images
+    needs: validate
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        component: [api, jobs, web, migrations]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-${{ matrix.component }}
+          tags: |
+            type=semver,pattern={{version}},value=${{ needs.validate.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.validate.outputs.version }}
+            type=semver,pattern={{major}},value=${{ needs.validate.outputs.version }}
+            type=raw,value=latest
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.component == 'web' && 'src/BDP.Registry.Web' || '.' }}
+          file: ${{ matrix.component == 'migrations' && 'src/BDP.Registry.Persistence/Dockerfile.migrations' || format('src/BDP.Registry.{0}/Dockerfile', matrix.component == 'api' && 'API' || matrix.component == 'jobs' && 'Jobs' || 'Web') }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  build-cli:
+    name: Build CLI
+    needs: validate
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        runtime: [linux-x64, linux-arm64, osx-x64, osx-arm64, win-x64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Publish CLI
+        env:
+          API_URL: ${{ vars.PROD_API_URL || 'https://bdp-registry-api-prod.fly.dev' }}
+        run: |
+          dotnet publish src/BDP.CLI/BDP.CLI.csproj \
+            -c Release \
+            -r ${{ matrix.runtime }} \
+            --self-contained true \
+            -p:PublishSingleFile=true \
+            -p:PublishTrimmed=true \
+            -p:Version=${{ needs.validate.outputs.version }} \
+            -p:ApiUrl="${API_URL}" \
+            -o ./dist/${{ matrix.runtime }}
+
+      - name: Create archive
+        run: |
+          cd dist/${{ matrix.runtime }}
+          if [[ "${{ matrix.runtime }}" == win-* ]]; then
+            zip -r ../../bdp-cli-${{ needs.validate.outputs.version }}-${{ matrix.runtime }}.zip .
+          else
+            tar czf ../../bdp-cli-${{ needs.validate.outputs.version }}-${{ matrix.runtime }}.tar.gz .
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-${{ matrix.runtime }}
+          path: bdp-cli-${{ needs.validate.outputs.version }}-${{ matrix.runtime }}.*
+          retention-days: 1
+
+  create-release:
+    name: Create GitHub Release
+    needs: [validate, build-images, build-cli]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+
+      - name: Create release notes
+        run: |
+          cat > release-notes.md << 'EOF'
+          ## Docker Images
+
+          Pull images from GitHub Container Registry:
+
+          ```bash
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-api:${{ needs.validate.outputs.version }}
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-jobs:${{ needs.validate.outputs.version }}
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-web:${{ needs.validate.outputs.version }}
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-migrations:${{ needs.validate.outputs.version }}
+          ```
+
+          ## CLI Installation
+
+          ### Linux (x64)
+          ```bash
+          curl -L https://github.com/${{ github.repository }}/releases/download/${{ needs.validate.outputs.tag }}/bdp-cli-${{ needs.validate.outputs.version }}-linux-x64.tar.gz | tar xz
+          sudo mv bdp /usr/local/bin/
+          bdp --version
+          ```
+
+          ### macOS (Apple Silicon)
+          ```bash
+          curl -L https://github.com/${{ github.repository }}/releases/download/${{ needs.validate.outputs.tag }}/bdp-cli-${{ needs.validate.outputs.version }}-osx-arm64.tar.gz | tar xz
+          sudo mv bdp /usr/local/bin/
+          bdp --version
+          ```
+
+          ### Windows (x64)
+          ```powershell
+          Invoke-WebRequest -Uri "https://github.com/${{ github.repository }}/releases/download/${{ needs.validate.outputs.tag }}/bdp-cli-${{ needs.validate.outputs.version }}-win-x64.zip" -OutFile bdp-cli.zip
+          Expand-Archive bdp-cli.zip -DestinationPath .
+          .\bdp.exe --version
+          ```
+
+          ## What's Changed
+
+          Full changelog: [${{ needs.validate.outputs.tag }}](https://github.com/${{ github.repository }}/compare/${{ needs.validate.outputs.tag }})
+          EOF
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ needs.validate.outputs.tag }}
+          name: Release ${{ needs.validate.outputs.version }}
+          body_path: release-notes.md
+          draft: false
+          prerelease: ${{ github.event.inputs.prerelease }}
+          files: |
+            artifacts/cli-*/*
+
+      - name: Summary
+        run: |
+          echo "## ✅ Release Created" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ needs.validate.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Tag:** ${{ needs.validate.outputs.tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Docker Images" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-api:${{ needs.validate.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-jobs:${{ needs.validate.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-web:${{ needs.validate.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}-migrations:${{ needs.validate.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Installation" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "curl -L https://github.com/${{ github.repository }}/releases/download/${{ needs.validate.outputs.tag }}/bdp-cli-${{ needs.validate.outputs.version }}-linux-x64.tar.gz | tar xz" >> $GITHUB_STEP_SUMMARY
+          echo "sudo mv bdp /usr/local/bin/" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

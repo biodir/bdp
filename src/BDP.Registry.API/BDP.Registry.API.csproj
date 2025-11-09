@@ -58,6 +58,7 @@
     <ProjectReference Include="..\BDP.Domain\BDP.Domain.csproj" />
     <ProjectReference Include="..\BDP.Application\BDP.Application.csproj" />
     <ProjectReference Include="..\BDP.Infrastructure\BDP.Infrastructure.csproj" />
+    <ProjectReference Include="..\BDP.Registry.Persistence\BDP.Registry.Persistence.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -2,6 +2,7 @@ import { Link } from "react-router";
 import { useIntlayer } from "react-intlayer";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { ModeToggle } from "@/components/mode-toggle";
+import { Github } from "lucide-react";
 
 export function Header() {
     const { appName } = useIntlayer("common");
@@ -14,6 +15,15 @@ export function Header() {
                 </Link>
 
                 <div className="flex items-center gap-2">
+                    <a
+                        href="https://github.com/biodir/bdp"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="hover:opacity-80 transition-opacity mr-1"
+                        aria-label="View on GitHub"
+                    >
+                        <Github className="w-5 h-5" />
+                    </a>
                     <ModeToggle />
                     <LanguageSwitcher />
                 </div>

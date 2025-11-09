@@ -276,7 +276,7 @@ const Home: React.FC<Route.ComponentProps> = ({ loaderData }) => {
                     {why.subtitle}
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
-                    {why.useCases.map((useCase: string, i: number) => (
+                    {why.useCases.map((useCase: { icon: string, title: string, description: string }, i: number) => (
                         <Card
                             key={i}
                             className="p-5 sm:p-6 text-left hover:shadow-lg transition-shadow duration-200"

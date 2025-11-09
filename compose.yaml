@@ -32,9 +32,11 @@
       - ASPNETCORE_ENVIRONMENT=${ENVIRONMENT:-Development}
       - ASPNETCORE_HTTP_PORTS=8080
       - ASPNETCORE_URLS=http://+:8080
-      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=${POSTGRES_DB:-bdp};Username=${POSTGRES_USER:-bdp};Password=${POSTGRES_PASSWORD:-bdp-pwd}
+      - ConnectionStrings__RegistryDatabase=Host=postgres;Port=5432;Database=${POSTGRES_DB:-bdp};Username=${POSTGRES_USER:-bdp};Password=${POSTGRES_PASSWORD:-bdp-pwd}
       - Cors__AllowedOrigins=${CORS__ALLOWEDORIGINS:-http://localhost:8080}
     depends_on:
+      migrations:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
     restart: unless-stopped
@@ -46,6 +48,39 @@
       timeout: 10s
       retries: 3
       start_period: 40s
+
+  jobs:
+    image: bdp-registry-jobs:latest
+    build:
+      context: .
+      dockerfile: src/BDP.Registry.Jobs/Dockerfile
+    container_name: bdp-registry-jobs
+    environment:
+      - DOTNET_ENVIRONMENT=${ENVIRONMENT:-Development}
+      - ConnectionStrings__RegistryDatabase=Host=postgres;Port=5432;Database=${POSTGRES_DB:-bdp};Username=${POSTGRES_USER:-bdp};Password=${POSTGRES_PASSWORD:-bdp-pwd}
+    depends_on:
+      migrations:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  migrations:
+    image: bdp-registry-migrations:latest
+    build:
+      context: .
+      dockerfile: src/BDP.Registry.Persistence/Dockerfile.migrations
+    container_name: bdp-registry-migrations
+    environment:
+      - ConnectionStrings__RegistryDatabase=Host=postgres;Port=5432;Database=${POSTGRES_DB:-bdp};Username=${POSTGRES_USER:-bdp};Password=${POSTGRES_PASSWORD:-bdp-pwd}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - app-network
+    restart: "no"
 
   postgres:
     image: postgres:16-alpine
