@@ -116,6 +116,9 @@ jobs:
             --output ./efbundle \
             --force
 
+      - name: Setup flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
       - name: Run migrations inside Fly Postgres network
         env:
           FLY_ORG: ${{ vars.FLY_ORG }}
