@@ -125,24 +125,22 @@ jobs:
           FLY_ORG: ${{ vars.FLY_ORG }}
           FLY_POSTGRES_APP_NAME: ${{ secrets.FLY_POSTGRES_APP_NAME }}
           REGISTRY_DB_CONNECTION_STRING: ${{ secrets.REGISTRY_DB_CONNECTION_STRING }}
+          FLYCTL_LOG_LEVEL: debug
         run: |
-          echo "=== Running EF bundle inside Fly network (Attaching for logs) ==="
+          echo "=== Running EF bundle inside Fly network (Forcing DEBUG logging for flyctl) ==="
           chmod +x ./efbundle
           echo "Postgres app: $FLY_POSTGRES_APP_NAME"
 
-          # The crucial addition is '--attach' to stream logs immediately
-          # and '--wait-for-completion' to ensure flyctl doesn't exit until the machine does.
+          # Using 'stdbuf -o L' forces line buffering on standard output for the 'dotnet' command.
+          # This combined with FLYCTL_LOG_LEVEL=debug should ensure all output is captured.
           flyctl machine run mcr.microsoft.com/dotnet/runtime:9.0-alpine \
             --app "$FLY_POSTGRES_APP_NAME" \
             --org "$FLY_ORG" \
             --region ams \
             --file-local /efbundle=./efbundle \
-            --command "dotnet /efbundle --connection '$REGISTRY_DB_CONNECTION_STRING'" \
+            --command "stdbuf -o L dotnet /efbundle --connection '$REGISTRY_DB_CONNECTION_STRING'" \
             --env DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 \
-            --restart no \
-            --verbose \
-            --attach \
-            --wait-for-completion
+            --rm
 
           echo "## Database Migration Completed" >> $GITHUB_STEP_SUMMARY
           echo "Environment: **${{ needs.check-trigger.outputs.environment }}**" >> $GITHUB_STEP_SUMMARY
