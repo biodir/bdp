@@ -36,15 +36,9 @@ $PgConn = ""
 
 if ($pgList -match [regex]::Escape($dbName)) {
     Write-Host "  [SKIP] Database already exists" -ForegroundColor DarkGray
-    Write-Host "  You must already have the connection string for this database." -ForegroundColor DarkGray
-    $PgConn = Read-Host "  Paste full DATABASE_URL for $dbName (or press Enter to abort)"
-    if ([string]::IsNullOrEmpty($PgConn)) {
-        Write-Host "  [ERROR] No connection string provided. Cannot continue." -ForegroundColor Red
-        exit 1
-    }
-    Write-Host "  [OK] Using user-provided connection string" -ForegroundColor Green
+    $PgConn = Read-Host "  Paste full DATABASE_URL for $dbName"
+    if ([string]::IsNullOrEmpty($PgConn)) { exit 1 }
 } else {
-    Write-Host "  Creating Postgres cluster..." -ForegroundColor Yellow
     $pgCreateOutput = flyctl postgres create `
         --name $dbName `
         --org $Org `
@@ -54,61 +48,34 @@ if ($pgList -match [regex]::Escape($dbName)) {
         --volume-size 1 2>&1 | Out-String
 
     Write-Host $pgCreateOutput
-    Write-Host ""
-    Write-Host "  Please copy the 'Connection string:' line shown above." -ForegroundColor Yellow
     $PgConn = Read-Host "  Paste the connection string here"
-    if ([string]::IsNullOrEmpty($PgConn)) {
-        Write-Host "  [ERROR] Connection string not provided. Cannot continue." -ForegroundColor Red
-        exit 1
-    }
-    Write-Host "  [OK] Connection string captured" -ForegroundColor Green
-    Write-Host "  [OK] Database created" -ForegroundColor Green
+    if ([string]::IsNullOrEmpty($PgConn)) { exit 1 }
 }
 
-Write-Host "Attaching Postgres..." -ForegroundColor Yellow
 flyctl postgres attach $dbName --app "$Env-bdp-registry-api" 2>$null
 flyctl postgres attach $dbName --app "$Env-bdp-registry-jobs" 2>$null
-
-Write-Host "Removing auto-generated DATABASE_URL secrets..." -ForegroundColor Yellow
 flyctl secrets unset DATABASE_URL --app "$Env-bdp-registry-api" 2>$null
 flyctl secrets unset DATABASE_URL --app "$Env-bdp-registry-jobs" 2>$null
 
 Write-Host "[OK] Fly.io resources ready" -ForegroundColor Green
 
-Write-Host "Creating GitHub environment '$Env'..." -ForegroundColor Yellow
 try {
     gh api repos/$Repo/environments/$Env --method PUT 2>$null | Out-Null
-    Write-Host "  [OK] GitHub environment '$Env' created" -ForegroundColor Green
-} catch {
-    Write-Host "  [SKIP] GitHub environment '$Env' already exists or creation failed" -ForegroundColor DarkGray
-}
+} catch { }
 
-Write-Host "Converting connection string format..." -ForegroundColor Yellow
-
-# Convert PostgreSQL URI to Npgsql format for efbundle compatibility
+# Convert PostgreSQL URI to Npgsql format
 if ($PgConn -match "postgres://([^:]+):([^@]+)@([^/:]+):(\d+)/?([^?]*)?(\?.*)?") {
     $username = $matches[1]
     $password = $matches[2]
     $hostname = $matches[3]
     $port = $matches[4]
     $database = $matches[5]
-
-    if ([string]::IsNullOrEmpty($database)) {
-        $database = $username
-        Write-Host "  [INFO] No database specified in URI, using username as database: $database" -ForegroundColor Yellow
-    }
-
-    $NpgsqlConn = "Host=${hostname};Port=${port};Database=${database};Username=${username};Password=${password}"
-    Write-Host "  [INFO] Converted PostgreSQL URI to Npgsql format" -ForegroundColor Blue
-    Write-Host "  [INFO] Original: postgres://${username}:****@${hostname}:${port}/${database}" -ForegroundColor Blue
-    Write-Host "  [INFO] Converted: Host=${hostname};Port=${port};Database=${database};Username=${username};Password=****" -ForegroundColor Blue
+    if ([string]::IsNullOrEmpty($database)) { $database = $username }
+    $NpgsqlConn = "Host=${hostname};Port=${port};Database=${database};Username=${username};Password=${password};SSL Mode=Disable"
 } else {
     $NpgsqlConn = $PgConn
-    Write-Host "  [INFO] Using connection string as-is (not PostgreSQL URI format)" -ForegroundColor Blue
-    Write-Host "  [INFO] Format: $NpgsqlConn" -ForegroundColor Blue
 }
 
-Write-Host "Configuring GitHub environment secrets..." -ForegroundColor Yellow
 gh secret set FLY_API_APP_NAME --repo $Repo --env $Env --body "$Env-bdp-registry-api" 2>$null
 gh secret set FLY_JOBS_APP_NAME --repo $Repo --env $Env --body "$Env-bdp-registry-jobs" 2>$null
 gh secret set FLY_WEB_APP_NAME --repo $Repo --env $Env --body "$Env-bdp-registry-web" 2>$null
@@ -117,28 +84,10 @@ gh secret set FLY_POSTGRES_APP_NAME --repo $Repo --env $Env --body "$dbName" 2>$
 gh secret set REGISTRY_DB_CONNECTION_STRING --repo $Repo --env $Env --body $NpgsqlConn 2>$null
 gh secret set HANGFIRE_DB_CONNECTION_STRING --repo $Repo --env $Env --body $NpgsqlConn 2>$null
 
-Write-Host "Configuring GitHub environment variables..." -ForegroundColor Yellow
 $apiUrl = "https://$Env-bdp-registry-api.fly.dev"
 gh variable set API_URL --repo $Repo --env $Env --body $apiUrl 2>$null
 gh variable set FLY_ORG --repo $Repo --env $Env --body $Org 2>$null
-Write-Host "[OK] GitHub environment variables configured (API_URL, FLY_ORG)" -ForegroundColor Green
 
 Write-Host "[OK] Environment '$Env' ready" -ForegroundColor Green
-
-Write-Host ""
-Write-Host "Setup Summary" -ForegroundColor Cyan
-Write-Host "Environment: $Env" -ForegroundColor White
-Write-Host "Fly.io Apps Created:" -ForegroundColor White
-Write-Host "  - $Env-bdp-registry-api" -ForegroundColor Gray
-Write-Host "  - $Env-bdp-registry-jobs" -ForegroundColor Gray
-Write-Host "  - $Env-bdp-registry-web" -ForegroundColor Gray
-Write-Host "  - $Env-bdp-registry-migrations" -ForegroundColor Gray
-Write-Host "Database: $dbName" -ForegroundColor White
-Write-Host "API URL: $apiUrl" -ForegroundColor White
-Write-Host "FLY_ORG: $Org" -ForegroundColor White
-Write-Host ""
-Write-Host "Connection String (Npgsql Format):" -ForegroundColor White
-Write-Host "$NpgsqlConn" -ForegroundColor Gray
-Write-Host ""
-Write-Host "You can now deploy using:" -ForegroundColor Yellow
-Write-Host "gh workflow run cd-deploy.yml --ref main" -ForegroundColor Green
+Write-Host "API URL: $apiUrl"
+Write-Host "Connection String (Npgsql Format): $NpgsqlConn"

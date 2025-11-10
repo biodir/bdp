@@ -81,8 +81,8 @@
   web:
     image: bdp-registry-web:latest
     build:
-      context: src/BDP.Registry.Web
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: src/BDP.Registry.Web/Dockerfile
     container_name: bdp-registry-web
     ports:
       - "${WEB_PORT:-8080}:8080"

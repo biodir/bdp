@@ -4,11 +4,12 @@ WORKDIR /app
 
 RUN corepack enable
 
-COPY package.json yarn.lock* ./
+COPY src/BDP.Registry.Web/package.json src/BDP.Registry.Web/yarn.lock* ./
 RUN yarn install --frozen-lockfile || yarn install
 
-COPY tsconfig.json vite.config.ts* react-router.config.ts* ./
-COPY . .
+COPY src/BDP.Registry.Web/tsconfig.json src/BDP.Registry.Web/vite.config.ts* src/BDP.Registry.Web/react-router.config.ts* ./
+
+COPY src/BDP.Registry.Web/ ./
 
 RUN yarn build
 
@@ -16,7 +17,7 @@ FROM nginx:alpine AS production
 
 RUN apk add --no-cache dumb-init wget
 
-COPY nginx.conf /etc/nginx/nginx.conf
+COPY src/BDP.Registry.Web/nginx.conf /etc/nginx/nginx.conf
 
 COPY --from=builder /app/build/client /usr/share/nginx/html
 
