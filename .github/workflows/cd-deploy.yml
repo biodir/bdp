@@ -97,7 +97,8 @@ jobs:
     environment:
       name: ${{ needs.check-trigger.outputs.environment }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -107,6 +108,9 @@ jobs:
       - name: Install EF Tool
         run: dotnet tool install --global dotnet-ef --version 9.0.0
 
+      - name: Setup flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
       - name: Build migrations bundle
         run: |
           dotnet ef migrations bundle \
@@ -115,9 +119,6 @@ jobs:
             --self-contained \
             --output ./efbundle \
             --force
-
-      - name: Setup flyctl
-        uses: superfly/flyctl-actions/setup-flyctl@master
 
       - name: Run migrations inside Fly Postgres network
         env:
@@ -130,13 +131,15 @@ jobs:
 
           echo "Postgres app: $FLY_POSTGRES_APP_NAME"
 
+          # Run EF bundle inside a lightweight .NET runtime container inside Fly
           flyctl machine run \
             --app "$FLY_POSTGRES_APP_NAME" \
             --org "$FLY_ORG" \
             --region ams \
             --rm \
-            --command "./efbundle --connection '$REGISTRY_DB_CONNECTION_STRING'" \
-            --vm-size shared-cpu-1x \
+            --image mcr.microsoft.com/dotnet/runtime:9.0 \
+            --volume "$(pwd)/efbundle:/efbundle:ro" \
+            --command "dotnet /efbundle --connection '$REGISTRY_DB_CONNECTION_STRING'" \
             --env DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 \
             --restart no
 
