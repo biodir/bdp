@@ -17,8 +17,9 @@ RUN dotnet ef migrations bundle \
     --runtime linux-x64 \
     --output /app/efbundle
 
-FROM mcr.microsoft.com/dotnet/runtime-deps:9.0-alpine AS final
+FROM mcr.microsoft.com/dotnet/runtime-deps:9.0 AS final
 WORKDIR /app
+
 COPY --from=build /app/efbundle .
 RUN chmod +x efbundle
 

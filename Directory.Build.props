@@ -6,7 +6,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <WarningsAsErrors />
 
-    <NoWarn>$(NoWarn);CS1591;CA2007;CA1031;CA1848;CA1812</NoWarn>
+    <NoWarn>$(NoWarn);CS1591;CA2007;CA1031;CA1848;CA1812;S2139</NoWarn>
     <WarningsNotAsErrors>$(WarningsNotAsErrors);</WarningsNotAsErrors>
   </PropertyGroup>
 

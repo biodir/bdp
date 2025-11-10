@@ -2,11 +2,11 @@ using BDP.Registry.Jobs.Abstractions;
 
 namespace BDP.Registry.Jobs.Features.Ensembl;
 
-internal sealed class EnsemblSyncService : IEnsemblSyncService
+public sealed class EnsemblSyncService : IEnsemblSyncService
 {
     private readonly ILogger<EnsemblSyncService> _logger;
 
-    internal EnsemblSyncService(ILogger<EnsemblSyncService> logger)
+    public EnsemblSyncService(ILogger<EnsemblSyncService> logger)
     {
         _logger = logger;
     }

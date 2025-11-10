@@ -246,7 +246,7 @@ jobs:
           echo "## TypeScript Type Check" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if yarn tsc --noEmit; then
+          if yarn typecheck; then
             echo "✅ TypeScript type checking passed." >> $GITHUB_STEP_SUMMARY
           else
             echo "❌ TypeScript type errors found." >> $GITHUB_STEP_SUMMARY
@@ -503,16 +503,16 @@ jobs:
         working-directory: src/BDP.Registry.Web
         run: yarn install --immutable
 
-      - name: Build
+      - name: Run TypeScript check and Build
         working-directory: src/BDP.Registry.Web
         run: |
-          echo "## Frontend Build" >> $GITHUB_STEP_SUMMARY
+          echo "## Frontend TypeScript Check and Build" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if yarn build; then
-            echo "✅ Frontend build successful." >> $GITHUB_STEP_SUMMARY
+          if yarn build:check; then
+            echo "✅ Frontend TypeScript check and build successful." >> $GITHUB_STEP_SUMMARY
           else
-            echo "❌ Frontend build failed." >> $GITHUB_STEP_SUMMARY
+            echo "❌ Frontend TypeScript check or build failed." >> $GITHUB_STEP_SUMMARY
             exit 1
           fi
 

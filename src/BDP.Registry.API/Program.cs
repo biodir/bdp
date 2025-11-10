@@ -16,20 +16,21 @@ try
 
     var builder = WebApplication.CreateBuilder(args);
 
+    var registryDb = builder.Configuration.GetConnectionString("RegistryDatabase")
+        ?? throw new InvalidOperationException("Missing RegistryDatabase connection string.");
+
     builder.ConfigureSerilog();
-    builder.AddHealthCheck();
+    builder.AddHealthCheck(registryDb);
     builder.AddCORS();
 
     builder.Services.AddRegistryPersistence(
-        builder.Configuration.GetConnectionString("")!,
+        registryDb,
         builder.Environment.IsDevelopment());
     builder.Services.AddEndpointsApiExplorer();
     builder.Services.AddOpenAPI();
     builder.Services.AddProblemDetails();
 
     var app = builder.Build();
-
-    await app.RunRegistryDatabaseMigrationsAsync();
 
     app.UseSerilogRequestLogging(options =>
     {

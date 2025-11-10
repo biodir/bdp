@@ -1,4 +1,4 @@
-using System.Linq.Expressions;
+using BDP.Registry.Jobs.Abstractions;
 using BDP.Registry.Jobs.Features.Checksum;
 using BDP.Registry.Jobs.Features.Ensembl;
 using BDP.Registry.Jobs.Features.Ncbi;
@@ -7,47 +7,35 @@ using Hangfire;
 
 namespace BDP.Registry.Jobs;
 
-internal sealed class JobSchedulerHostedService : IHostedService
+public sealed class JobSchedulerHostedService : IHostedService
 {
-    private readonly IRecurringJobManager _recurringJobManager;
     private readonly IConfiguration _configuration;
     private readonly ILogger<JobSchedulerHostedService> _logger;
+    private readonly IServiceProvider _serviceProvider;
 
-    internal JobSchedulerHostedService(
-        IRecurringJobManager recurringJobManager,
+    public JobSchedulerHostedService(
         IConfiguration configuration,
-        ILogger<JobSchedulerHostedService> logger)
+        ILogger<JobSchedulerHostedService> logger,
+        IServiceProvider serviceProvider)
     {
-        _recurringJobManager = recurringJobManager;
         _configuration = configuration;
         _logger = logger;
+        _serviceProvider = serviceProvider;
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
         _logger.LogInformation("Registering Hangfire recurring jobs...");
 
-        var jobs = _configuration.GetSection("Jobs");
+        using var scope = _serviceProvider.CreateScope();
+        var recurringJobManager = scope.ServiceProvider.GetRequiredService<IRecurringJobManager>();
 
-        ScheduleJob<EnsemblWorker>("Ensembl", "sync-ensembl", jobs, w => w.ExecuteAsync());
-        ScheduleJob<UniprotWorker>("Uniprot", "sync-uniprot", jobs, w => w.ExecuteAsync());
-        ScheduleJob<NcbiWorker>("Ncbi", "sync-ncbi", jobs, w => w.ExecuteAsync());
+        var jobsSection = _configuration.GetSection("Jobs");
 
-        var checksumSection = jobs.GetSection("Checksum:Verify");
-        if (checksumSection.Exists() && checksumSection.GetValue<bool>("Enabled"))
-        {
-            var cron = checksumSection.GetValue<string>("Cron");
-            if (!string.IsNullOrWhiteSpace(cron))
-            {
-                _recurringJobManager.AddOrUpdate<ChecksumWorker>(
-                    "verify-checksums",
-                    w => w.ExecuteAsync(),
-                    cron,
-                    new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
-
-                _logger.LogInformation("✓ Scheduled checksum verification at {Cron}", cron);
-            }
-        }
+        ScheduleJob<ChecksumWorker>("Checksum:Verify", "verify-checksums", jobsSection, recurringJobManager);
+        ScheduleJob<EnsemblWorker>("Sync:Ensembl", "sync-ensembl", jobsSection, recurringJobManager);
+        ScheduleJob<UniprotWorker>("Sync:Uniprot", "sync-uniprot", jobsSection, recurringJobManager);
+        ScheduleJob<NcbiWorker>("Sync:Ncbi", "sync-ncbi", jobsSection, recurringJobManager);
 
         _logger.LogInformation("Hangfire recurring job registration completed");
         return Task.CompletedTask;
@@ -59,14 +47,10 @@ internal sealed class JobSchedulerHostedService : IHostedService
         return Task.CompletedTask;
     }
 
-    private void ScheduleJob<TWorker>(
-        string configKey,
-        string jobId,
-        IConfigurationSection jobsSection,
-        Expression<Func<TWorker, Task>> methodCall)
-        where TWorker : class
+    private void ScheduleJob<TWorker>(string configKey, string jobId, IConfigurationSection jobsSection, IRecurringJobManager recurringJobManager)
+        where TWorker : class, IWorker
     {
-        var section = jobsSection.GetSection($"Sync:{configKey}");
+        var section = jobsSection.GetSection(configKey);
         if (!section.Exists())
         {
             _logger.LogWarning("Configuration for {ConfigKey} not found", configKey);
@@ -88,12 +72,19 @@ internal sealed class JobSchedulerHostedService : IHostedService
             return;
         }
 
-        _recurringJobManager.AddOrUpdate(
-            jobId,
-            methodCall,
-            cron,
-            new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+        recurringJobManager.AddOrUpdate(jobId, () => ExecuteWorkerAsync(typeof(TWorker)), cron,
+            new RecurringJobOptions
+            {
+                TimeZone = TimeZoneInfo.Utc
+            });
 
         _logger.LogInformation("✓ Scheduled {JobId} at {Cron}", jobId, cron);
+    }
+
+    public async Task ExecuteWorkerAsync(Type workerType)
+    {
+        using var scope = _serviceProvider.CreateScope();
+        var worker = (IWorker)scope.ServiceProvider.GetRequiredService(workerType);
+        await worker.ExecuteAsync(CancellationToken.None);
     }
 }

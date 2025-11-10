@@ -4,6 +4,7 @@ using BDP.Registry.Jobs.Features.Checksum;
 using BDP.Registry.Jobs.Features.Ensembl;
 using BDP.Registry.Jobs.Features.Ncbi;
 using BDP.Registry.Jobs.Features.Uniprot;
+using BDP.Registry.Jobs.Utils;
 using BDP.Registry.Persistence;
 using Hangfire;
 using Hangfire.PostgreSql;
@@ -30,6 +31,8 @@ var registryDb = builder.Configuration.GetConnectionString("RegistryDatabase")
 
 var hangfireDb = builder.Configuration.GetConnectionString("HangfireDatabase")
     ?? throw new InvalidOperationException("Missing HangfireDatabase connection string.");
+
+await DbUtils.EnsureDatabaseExistsAsync(hangfireDb, builder.Environment.IsDevelopment());
 
 builder.Services.AddRegistryPersistence(registryDb, builder.Environment.IsDevelopment());
 
@@ -68,15 +71,17 @@ builder.Services.AddHangfireServer(options =>
 
 builder.Services.AddHttpClient();
 
+// Register services and workers
+builder.Services.AddScoped<IChecksumService, ChecksumService>();
+builder.Services.AddScoped<ChecksumWorker>();
+
 builder.Services.AddScoped<IEnsemblSyncService, EnsemblSyncService>();
 builder.Services.AddScoped<IUniprotSyncService, UniprotSyncService>();
 builder.Services.AddScoped<INcbiSyncService, NcbiSyncService>();
-builder.Services.AddScoped<IChecksumService, ChecksumService>();
 
 builder.Services.AddScoped<EnsemblWorker>();
 builder.Services.AddScoped<UniprotWorker>();
 builder.Services.AddScoped<NcbiWorker>();
-builder.Services.AddScoped<ChecksumWorker>();
 
 builder.Services.AddHostedService<JobSchedulerHostedService>();
 

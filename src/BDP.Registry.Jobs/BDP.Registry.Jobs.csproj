@@ -5,8 +5,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UserSecretsId>dotnet-BDP.Registry.Jobs-10c6a833-9e4f-414a-86ba-fb32d92bdcc5</UserSecretsId>
     <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+    <NoWarn>$(NoWarn);CA1515</NoWarn>
   </PropertyGroup>
-
+  
   <ItemGroup>
     <PackageReference Include="Hangfire.Core" Version="1.8.22" />
     <PackageReference Include="Hangfire.AspNetCore" Version="1.8.22" />

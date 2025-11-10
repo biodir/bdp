@@ -10,7 +10,7 @@ public class RegistryDbContext : DbContext
     {
     }
 
-    public required DbSet<RegistryItem> RegistryItems { get; set; }
+    public DbSet<RegistryItem>? RegistryItems { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

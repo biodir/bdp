@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "react-router dev",
-    "build": "react-router typegen && tsc -b && vite build",
+    "build": "react-router build",
+    "typecheck": "react-router typegen && tsc --build --noEmit",
+    "build:check": "yarn typecheck && yarn build",
     "typegen": "react-router typegen",
     "lint": "eslint .",
     "preview": "vite preview",

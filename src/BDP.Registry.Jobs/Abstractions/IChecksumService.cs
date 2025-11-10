@@ -1,6 +1,6 @@
 namespace BDP.Registry.Jobs.Abstractions;
 
-internal interface IChecksumService
+public interface IChecksumService
 {
     Task VerifyAllAsync(CancellationToken cancellationToken = default);
 }

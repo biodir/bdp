@@ -11,13 +11,11 @@ namespace BDP.Registry.API.Common.Extensions;
 
 internal static class WebApplicationBuilderExtensions
 {
-    internal static WebApplicationBuilder AddHealthCheck(this WebApplicationBuilder builder)
+    internal static WebApplicationBuilder AddHealthCheck(this WebApplicationBuilder builder, string connectionString)
     {
-        var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-
         builder.Services.AddHealthChecks()
             .AddNpgSql(
-                connectionString!,
+                connectionString,
                 name: "postgres",
                 failureStatus: HealthStatus.Unhealthy,
                 tags: ["db", "postgresql", "ready"]);

@@ -58,6 +58,7 @@
     environment:
       - DOTNET_ENVIRONMENT=${ENVIRONMENT:-Development}
       - ConnectionStrings__RegistryDatabase=Host=postgres;Port=5432;Database=${POSTGRES_DB:-bdp};Username=${POSTGRES_USER:-bdp};Password=${POSTGRES_PASSWORD:-bdp-pwd}
+      - ConnectionStrings__HangfireDatabase=Host=postgres;Port=5432;Database=${POSTGRES_DB:-bdp}_hangfire;Username=${POSTGRES_USER:-bdp};Password=${POSTGRES_PASSWORD:-bdp-pwd}
     depends_on:
       migrations:
         condition: service_completed_successfully

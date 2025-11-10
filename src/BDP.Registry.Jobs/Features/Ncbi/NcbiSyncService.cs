@@ -2,11 +2,11 @@ using BDP.Registry.Jobs.Abstractions;
 
 namespace BDP.Registry.Jobs.Features.Ncbi;
 
-internal sealed class NcbiSyncService : INcbiSyncService
+public sealed class NcbiSyncService : INcbiSyncService
 {
     private readonly ILogger<NcbiSyncService> _logger;
 
-    internal NcbiSyncService(ILogger<NcbiSyncService> logger)
+    public NcbiSyncService(ILogger<NcbiSyncService> logger)
     {
         _logger = logger;
     }

@@ -2,11 +2,11 @@ using BDP.Registry.Jobs.Abstractions;
 
 namespace BDP.Registry.Jobs.Features.Checksum;
 
-internal sealed class ChecksumService : IChecksumService
+public sealed class ChecksumService : IChecksumService
 {
     private readonly ILogger<ChecksumService> _logger;
 
-    internal ChecksumService(ILogger<ChecksumService> logger)
+    public ChecksumService(ILogger<ChecksumService> logger)
     {
         _logger = logger;
     }
