@@ -116,18 +116,26 @@ jobs:
             --output ./efbundle \
             --force
 
-      - name: Setup Fly CLI
-        uses: superfly/flyctl-actions/setup-flyctl@master
-
-      - name: Run migrations inside Fly
+      - name: Run migrations inside Fly Postgres network
         env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-          FLY_APP_NAME: ${{ secrets.FLY_API_APP_NAME }}
+          FLY_ORG: ${{ vars.FLY_ORG }}
+          FLY_POSTGRES_APP_NAME: ${{ secrets.FLY_POSTGRES_APP_NAME }}
           REGISTRY_DB_CONNECTION_STRING: ${{ secrets.REGISTRY_DB_CONNECTION_STRING }}
         run: |
+          echo "=== Running EF bundle inside Fly network ==="
           chmod +x ./efbundle
-          echo "Running migrations inside Fly app: ${FLY_APP_NAME}"
-          flyctl ssh console -a "${FLY_APP_NAME}" --command "./efbundle --connection \"$REGISTRY_DB_CONNECTION_STRING\""
+
+          echo "Postgres app: $FLY_POSTGRES_APP_NAME"
+
+          flyctl machine run \
+            --app "$FLY_POSTGRES_APP_NAME" \
+            --org "$FLY_ORG" \
+            --region ams \
+            --rm \
+            --command "./efbundle --connection '$REGISTRY_DB_CONNECTION_STRING'" \
+            --vm-size shared-cpu-1x \
+            --env DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 \
+            --restart no
 
           echo "## Database Migration Completed" >> $GITHUB_STEP_SUMMARY
           echo "Environment: **${{ needs.check-trigger.outputs.environment }}**" >> $GITHUB_STEP_SUMMARY
