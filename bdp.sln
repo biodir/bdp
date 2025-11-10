@@ -36,6 +36,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BDP.Registry.Jobs", "src\BD
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BDP.Registry.Persistence", "src\BDP.Registry.Persistence\BDP.Registry.Persistence.csproj", "{0C225D1A-397D-4DB4-B682-FAA9F4069C66}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BDP.Registry.Migrations", "src\BDP.Registry.Migrations\BDP.Registry.Migrations.csproj", "{05A823A2-F411-4263-9AE1-813FA3AE6287}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -190,6 +192,18 @@ Global
 		{0C225D1A-397D-4DB4-B682-FAA9F4069C66}.Release|x64.Build.0 = Release|Any CPU
 		{0C225D1A-397D-4DB4-B682-FAA9F4069C66}.Release|x86.ActiveCfg = Release|Any CPU
 		{0C225D1A-397D-4DB4-B682-FAA9F4069C66}.Release|x86.Build.0 = Release|Any CPU
+		{05A823A2-F411-4263-9AE1-813FA3AE6287}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{05A823A2-F411-4263-9AE1-813FA3AE6287}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{05A823A2-F411-4263-9AE1-813FA3AE6287}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{05A823A2-F411-4263-9AE1-813FA3AE6287}.Debug|x64.Build.0 = Debug|Any CPU
+		{05A823A2-F411-4263-9AE1-813FA3AE6287}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{05A823A2-F411-4263-9AE1-813FA3AE6287}.Debug|x86.Build.0 = Debug|Any CPU
+		{05A823A2-F411-4263-9AE1-813FA3AE6287}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{05A823A2-F411-4263-9AE1-813FA3AE6287}.Release|Any CPU.Build.0 = Release|Any CPU
+		{05A823A2-F411-4263-9AE1-813FA3AE6287}.Release|x64.ActiveCfg = Release|Any CPU
+		{05A823A2-F411-4263-9AE1-813FA3AE6287}.Release|x64.Build.0 = Release|Any CPU
+		{05A823A2-F411-4263-9AE1-813FA3AE6287}.Release|x86.ActiveCfg = Release|Any CPU
+		{05A823A2-F411-4263-9AE1-813FA3AE6287}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -207,5 +221,6 @@ Global
 		{24A16D02-2A20-4B48-84B1-C45936E997E4} = {0C88DD14-F956-CE84-757C-A364CCF449FC}
 		{65115FB4-53F8-4915-85BF-715A02A9C0C2} = {4786C369-2985-48AF-8643-4F0406F1FF88}
 		{0C225D1A-397D-4DB4-B682-FAA9F4069C66} = {4786C369-2985-48AF-8643-4F0406F1FF88}
+		{05A823A2-F411-4263-9AE1-813FA3AE6287} = {4786C369-2985-48AF-8643-4F0406F1FF88}
 	EndGlobalSection
 EndGlobal

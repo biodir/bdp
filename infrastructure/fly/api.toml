@@ -1,9 +1,9 @@
-app = 'bdp-registry-api-dev'
+app = 'bdp-registry-api'
 primary_region = 'ams'
 
 [build]
   dockerfile = '../../src/BDP.Registry.API/Dockerfile'
-  context = '../../src/BDP.Registry.API/Dockerfile'
+  context = '../../'
 
 [deploy]
   strategy = 'rolling'

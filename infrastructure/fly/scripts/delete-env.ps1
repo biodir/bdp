@@ -29,6 +29,7 @@ $RepoSecrets = @(
     "FLY_API_APP_NAME",
     "FLY_JOBS_APP_NAME",
     "FLY_WEB_APP_NAME",
+    "FLY_MIGRATIONS_APP_NAME", # ADDED
     "REGISTRY_DB_CONNECTION_STRING",
     "HANGFIRE_DB_CONNECTION_STRING"
 )
@@ -43,7 +44,8 @@ Write-Host "Removing Fly.io resources..." -ForegroundColor Yellow
 $apps = @(
     "$Env-bdp-registry-api",
     "$Env-bdp-registry-jobs",
-    "$Env-bdp-registry-web"
+    "$Env-bdp-registry-web",
+    "$Env-bdp-registry-migrations" # ADDED
 )
 $dbName = "$Env-bdp-registry-postgres"
 
@@ -82,6 +84,7 @@ Write-Host "Fly.io apps destroyed:" -ForegroundColor Green
 Write-Host "   - $Env-bdp-registry-api" -ForegroundColor Gray
 Write-Host "   - $Env-bdp-registry-jobs" -ForegroundColor Gray
 Write-Host "   - $Env-bdp-registry-web" -ForegroundColor Gray
+Write-Host "   - $Env-bdp-registry-migrations" -ForegroundColor Gray # ADDED
 Write-Host "Database destroyed: $dbName" -ForegroundColor Green
 Write-Host ""
 Write-Host "[OK] Environment $Env deleted successfully" -ForegroundColor Green

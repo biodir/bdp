@@ -100,47 +100,37 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
-
-      - name: Install EF Tool
-        run: dotnet tool install --global dotnet-ef --version 9.0.0
-
       - name: Setup flyctl
         uses: superfly/flyctl-actions/setup-flyctl@master
 
-      - name: Build migrations bundle
-        run: |
-          dotnet ef migrations bundle \
-            --project src/BDP.Registry.Persistence/BDP.Registry.Persistence.csproj \
-            --target-runtime linux-x64 \
-            --self-contained \
-            --output ./efbundle \
-            --force
-
-      - name: Run migrations inside Fly Postgres network
+      - name: Build and Push Migrations Container
         env:
           FLY_ORG: ${{ vars.FLY_ORG }}
-          FLY_POSTGRES_APP_NAME: ${{ secrets.FLY_POSTGRES_APP_NAME }}
+          FLY_MIGRATIONS_APP_NAME: ${{ secrets.FLY_MIGRATIONS_APP_NAME }}
           REGISTRY_DB_CONNECTION_STRING: ${{ secrets.REGISTRY_DB_CONNECTION_STRING }}
-          FLYCTL_LOG_LEVEL: debug
         run: |
-          echo "=== Running EF bundle inside Fly network (Forcing DEBUG logging for flyctl) ==="
-          chmod +x ./efbundle
-          echo "Postgres app: $FLY_POSTGRES_APP_NAME"
+          echo "=== Deploying Migrations Container ==="
+          # Build & push the migrations image to Fly
+          flyctl deploy \
+            --config infrastructure/fly/migrations.toml \
+            --dockerfile src/BDP.Registry.Migrations/Dockerfile.migrations \
+            --app "${FLY_MIGRATIONS_APP_NAME}" \
+            --remote-only \
+            --env ConnectionStrings__RegistryDatabase="${REGISTRY_DB_CONNECTION_STRING}"
 
-          # Using 'stdbuf -o L' forces line buffering on standard output for the 'dotnet' command.
-          # This combined with FLYCTL_LOG_LEVEL=debug should ensure all output is captured.
-          flyctl machine run mcr.microsoft.com/dotnet/runtime:9.0-alpine \
-            --app "$FLY_POSTGRES_APP_NAME" \
-            --org "$FLY_ORG" \
+      - name: Run Migrations Container
+        env:
+          FLY_ORG: ${{ vars.FLY_ORG }}
+          FLY_MIGRATIONS_APP_NAME: ${{ secrets.FLY_MIGRATIONS_APP_NAME }}
+          REGISTRY_DB_CONNECTION_STRING: ${{ secrets.REGISTRY_DB_CONNECTION_STRING }}
+        run: |
+          echo "=== Running Migrations CLI inside Fly Machine ==="
+          # Run the migrations CLI container; ENTRYPOINT is the CLI DLL
+          flyctl machines run "${FLY_MIGRATIONS_APP_NAME}" \
+            --rm \
+            --env ConnectionStrings__RegistryDatabase="${REGISTRY_DB_CONNECTION_STRING}" \
             --region ams \
-            --file-local /efbundle=./efbundle \
-            --command "stdbuf -o L dotnet /efbundle --connection '$REGISTRY_DB_CONNECTION_STRING'" \
-            --env DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 \
-            --rm
+            --org "$FLY_ORG"
 
           echo "## Database Migration Completed" >> $GITHUB_STEP_SUMMARY
           echo "Environment: **${{ needs.check-trigger.outputs.environment }}**" >> $GITHUB_STEP_SUMMARY

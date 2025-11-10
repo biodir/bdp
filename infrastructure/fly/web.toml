@@ -1,9 +1,9 @@
-app = 'bdp-registry-web-dev'
+app = 'bdp-registry-web'
 primary_region = 'ams'
 
 [build]
   dockerfile = '../../src/BDP.Registry.Web/Dockerfile'
-  context = '../../src/BDP.Registry.Web'
+  context = '../../'
 
 [deploy]
   strategy = 'rolling'

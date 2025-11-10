@@ -1,9 +1,9 @@
-app = 'bdp-registry-jobs-dev'
+app = 'bdp-registry-jobs'
 primary_region = 'ams'
 
 [build]
   dockerfile = '../../src/BDP.Registry.Jobs/Dockerfile'
-  context = '../../src/BDP.Registry.Jobs'
+  context = '../../'
 
 [deploy]
   strategy = 'rolling'

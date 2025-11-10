@@ -1,26 +1,26 @@
-﻿FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS base
-USER $APP_UID
+﻿FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
 WORKDIR /app
-EXPOSE 8080
-EXPOSE 8081
 
-FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
-ARG BUILD_CONFIGURATION=Release
-WORKDIR /src
-COPY ["src/BDP.Registry.API/BDP.Registry.API.csproj", "src/BDP.Registry.API/"]
-COPY ["src/BDP.Domain/BDP.Domain.csproj", "src/BDP.Domain/"]
-COPY ["src/BDP.Application/BDP.Application.csproj", "src/BDP.Application/"]
-COPY ["src/BDP.Infrastructure/BDP.Infrastructure.csproj", "src/BDP.Infrastructure/"]
-RUN dotnet restore "src/BDP.Registry.API/BDP.Registry.API.csproj"
-COPY . .
-WORKDIR "/src/src/BDP.Registry.API"
-RUN dotnet build "./BDP.Registry.API.csproj" -c $BUILD_CONFIGURATION -o /app/build
+COPY *.sln .
+COPY src/BDP.Registry.Persistence/*.csproj src/BDP.Registry.Persistence/
+COPY src/BDP.Registry.Persistence/ src/BDP.Registry.Persistence/
 
-FROM build AS publish
-ARG BUILD_CONFIGURATION=Release
-RUN dotnet publish "./BDP.Registry.API.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
+RUN dotnet restore src/BDP.Registry.Persistence/BDP.Registry.Persistence.csproj
 
-FROM base AS final
+RUN dotnet tool install --global dotnet-ef --version 9.* \
+    && export PATH="$PATH:/root/.dotnet/tools" \
+    && dotnet ef migrations bundle \
+         --project src/BDP.Registry.Persistence/BDP.Registry.Persistence.csproj \
+         --self-contained \
+         --target-runtime linux-x64 \
+         --output /app/efbundle \
+         --force
+
+FROM mcr.microsoft.com/dotnet/runtime-deps:9.0 AS final
 WORKDIR /app
-COPY --from=publish /app/publish .
-ENTRYPOINT ["dotnet", "BDP.Registry.API.dll"]
+
+COPY --from=build /app/efbundle .
+
+RUN chmod +x /app/efbundle
+
+ENTRYPOINT ["/app/efbundle"]

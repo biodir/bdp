@@ -1,0 +1,21 @@
+app = "bdp-registry-migrations"
+primary_region = "ams"
+
+[build]
+dockerfile = '../../src/BDP.Registry.Migrations/Dockerfile.migrations'
+context = '../../'
+
+[deploy]
+release_command = "dotnet /app/BDP.Registry.Migrations.dll"
+
+[env]
+DOTNET_SYSTEM_GLOBALIZATION_INVARIANT = "1"
+
+[[services]]
+internal_port = 8080
+protocol = "tcp"
+auto_stop_machines = true
+auto_start_machines = false
+
+[[services.ports]]
+port = 80

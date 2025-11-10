@@ -28,6 +28,7 @@ function Ensure-App {
 Ensure-App "$Env-bdp-registry-api"
 Ensure-App "$Env-bdp-registry-jobs"
 Ensure-App "$Env-bdp-registry-web"
+Ensure-App "$Env-bdp-registry-migrations"
 
 $dbName = "$Env-bdp-registry-postgres"
 $pgList = flyctl postgres list -o $Org 2>$null | Out-String
@@ -111,6 +112,7 @@ Write-Host "Configuring GitHub environment secrets..." -ForegroundColor Yellow
 gh secret set FLY_API_APP_NAME --repo $Repo --env $Env --body "$Env-bdp-registry-api" 2>$null
 gh secret set FLY_JOBS_APP_NAME --repo $Repo --env $Env --body "$Env-bdp-registry-jobs" 2>$null
 gh secret set FLY_WEB_APP_NAME --repo $Repo --env $Env --body "$Env-bdp-registry-web" 2>$null
+gh secret set FLY_MIGRATIONS_APP_NAME --repo $Repo --env $Env --body "$Env-bdp-registry-migrations" 2>$null
 gh secret set FLY_POSTGRES_APP_NAME --repo $Repo --env $Env --body "$dbName" 2>$null
 gh secret set REGISTRY_DB_CONNECTION_STRING --repo $Repo --env $Env --body $NpgsqlConn 2>$null
 gh secret set HANGFIRE_DB_CONNECTION_STRING --repo $Repo --env $Env --body $NpgsqlConn 2>$null
@@ -130,6 +132,7 @@ Write-Host "Fly.io Apps Created:" -ForegroundColor White
 Write-Host "  - $Env-bdp-registry-api" -ForegroundColor Gray
 Write-Host "  - $Env-bdp-registry-jobs" -ForegroundColor Gray
 Write-Host "  - $Env-bdp-registry-web" -ForegroundColor Gray
+Write-Host "  - $Env-bdp-registry-migrations" -ForegroundColor Gray
 Write-Host "Database: $dbName" -ForegroundColor White
 Write-Host "API URL: $apiUrl" -ForegroundColor White
 Write-Host "FLY_ORG: $Org" -ForegroundColor White
