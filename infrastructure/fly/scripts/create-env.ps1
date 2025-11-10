@@ -10,7 +10,7 @@ param(
 
 $ErrorActionPreference = "Continue"
 
-Write-Host "=== Creating $Env environment in org $Org ===" -ForegroundColor Cyan
+Write-Host "Creating $Env environment in org $Org" -ForegroundColor Cyan
 Write-Host "Creating Fly.io resources..." -ForegroundColor Yellow
 
 $appsList = flyctl apps list -o $Org 2>$null | Out-String
@@ -28,7 +28,6 @@ function Ensure-App {
 Ensure-App "$Env-bdp-registry-api"
 Ensure-App "$Env-bdp-registry-jobs"
 Ensure-App "$Env-bdp-registry-web"
-Ensure-App "$Env-bdp-registry-migrations"
 
 $dbName = "$Env-bdp-registry-postgres"
 $pgList = flyctl postgres list -o $Org 2>$null | Out-String
@@ -68,24 +67,46 @@ if ($pgList -match [regex]::Escape($dbName)) {
 Write-Host "Attaching Postgres..." -ForegroundColor Yellow
 flyctl postgres attach $dbName --app "$Env-bdp-registry-api" 2>$null
 flyctl postgres attach $dbName --app "$Env-bdp-registry-jobs" 2>$null
-flyctl postgres attach $dbName --app "$Env-bdp-registry-migrations" 2>$null
+
+Write-Host "Removing auto-generated DATABASE_URL secrets..." -ForegroundColor Yellow
+flyctl secrets unset DATABASE_URL --app "$Env-bdp-registry-api" 2>$null
+flyctl secrets unset DATABASE_URL --app "$Env-bdp-registry-jobs" 2>$null
 
 Write-Host "[OK] Fly.io resources ready" -ForegroundColor Green
-Write-Host "Configuring GitHub secrets..." -ForegroundColor Yellow
 
-gh secret set FLY_API_APP_NAME --repo $Repo --body "$Env-bdp-registry-api" 2>$null
-gh secret set FLY_JOBS_APP_NAME --repo $Repo --body "$Env-bdp-registry-jobs" 2>$null
-gh secret set FLY_WEB_APP_NAME --repo $Repo --body "$Env-bdp-registry-web" 2>$null
-gh secret set FLY_MIGRATIONS_APP_NAME --repo $Repo --body "$Env-bdp-registry-migrations" 2>$null
+Write-Host "Creating GitHub environment '$Env'..." -ForegroundColor Yellow
+try {
+    gh api repos/$Repo/environments/$Env --method PUT 2>$null | Out-Null
+    Write-Host "  [OK] GitHub environment '$Env' created" -ForegroundColor Green
+} catch {
+    Write-Host "  [SKIP] GitHub environment '$Env' already exists or creation failed" -ForegroundColor DarkGray
+}
 
-$RegistryConn = $PgConn -replace "postgres://[^@]+@", "postgres://RegistryDatabase:password@"
-$HangfireConn = $PgConn -replace "postgres://[^@]+@", "postgres://HangfireDatabase:password@"
+Write-Host "Configuring GitHub environment secrets..." -ForegroundColor Yellow
 
-gh secret set REGISTRY_DB_CONNECTION_STRING --repo $Repo --body $RegistryConn 2>$null
-gh secret set HANGFIRE_DB_CONNECTION_STRING --repo $Repo --body $HangfireConn 2>$null
+gh secret set FLY_API_APP_NAME --repo $Repo --env $Env --body "$Env-bdp-registry-api" 2>$null
+gh secret set FLY_JOBS_APP_NAME --repo $Repo --env $Env --body "$Env-bdp-registry-jobs" 2>$null
+gh secret set FLY_WEB_APP_NAME --repo $Repo --env $Env --body "$Env-bdp-registry-web" 2>$null
 
+gh secret set REGISTRY_DB_CONNECTION_STRING --repo $Repo --env $Env --body $PgConn 2>$null
+gh secret set HANGFIRE_DB_CONNECTION_STRING --repo $Repo --env $Env --body $PgConn 2>$null
+
+Write-Host "Configuring GitHub environment variables..." -ForegroundColor Yellow
 $apiUrl = "https://$Env-bdp-registry-api.fly.dev"
-gh variable set "$($Env.ToUpper())_API_URL" --repo $Repo --body $apiUrl 2>$null
+gh variable set API_URL --repo $Repo --env $Env --body $apiUrl 2>$null
 
-Write-Host "[OK] GitHub secrets configured" -ForegroundColor Green
+Write-Host "[OK] GitHub environment secrets and variables configured" -ForegroundColor Green
 Write-Host "[OK] Environment '$Env' ready" -ForegroundColor Green
+
+Write-Host ""
+Write-Host "Setup Summary" -ForegroundColor Cyan
+Write-Host "Environment: $Env" -ForegroundColor White
+Write-Host "Fly.io Apps Created:" -ForegroundColor White
+Write-Host "  - $Env-bdp-registry-api" -ForegroundColor Gray
+Write-Host "  - $Env-bdp-registry-jobs" -ForegroundColor Gray
+Write-Host "  - $Env-bdp-registry-web" -ForegroundColor Gray
+Write-Host "Database: $dbName" -ForegroundColor White
+Write-Host "API URL: $apiUrl" -ForegroundColor White
+Write-Host ""
+Write-Host "You can now deploy using:" -ForegroundColor Yellow
+Write-Host "gh workflow run cd-deploy.yml --ref main -f environment=$Env" -ForegroundColor Green

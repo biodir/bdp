@@ -69,13 +69,24 @@
       - app-network
 
   migrations:
-    image: bdp-registry-migrations:latest
-    build:
-      context: .
-      dockerfile: src/BDP.Registry.Persistence/Dockerfile.migrations
+    image: mcr.microsoft.com/dotnet/sdk:9.0
     container_name: bdp-registry-migrations
+    volumes:
+      - ./src/BDP.Registry.Persistence:/src/BDP.Registry.Persistence
+    working_dir: /src
     environment:
       - ConnectionStrings__RegistryDatabase=Host=postgres;Port=5432;Database=${POSTGRES_DB:-bdp};Username=${POSTGRES_USER:-bdp};Password=${POSTGRES_PASSWORD:-bdp-pwd}
+    command: >
+      bash -c "
+      echo 'Installing EF tools...' &&
+      dotnet tool install --global dotnet-ef --version 9.0.0 &&
+      export PATH=\"/root/.dotnet/tools:\$$PATH\" &&
+      echo 'Building efbundle...' &&
+      dotnet ef migrations bundle --project BDP.Registry.Persistence/BDP.Registry.Persistence.csproj --target-runtime linux-x64 --self-contained --output /tmp/efbundle --force &&
+      chmod +x /tmp/efbundle &&
+      echo 'Running migrations...' &&
+      /tmp/efbundle --connection \"\$$ConnectionStrings__RegistryDatabase\"
+      "
     depends_on:
       postgres:
         condition: service_healthy

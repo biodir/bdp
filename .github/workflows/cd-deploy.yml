@@ -104,19 +104,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup flyctl
-        uses: superfly/flyctl-actions/setup-flyctl@master
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Install EF Tool
+        run: dotnet tool install --global dotnet-ef --version 9.0.0
+
+      - name: Build migrations bundle
+        run: |
+          dotnet ef migrations bundle \
+            --project src/BDP.Registry.Persistence/BDP.Registry.Persistence.csproj \
+            --target-runtime linux-x64 \
+            --self-contained \
+            --output ./efbundle
 
       - name: Run migrations
         env:
-          FLY_APP_NAME: ${{ secrets.FLY_MIGRATIONS_APP_NAME }}
+          REGISTRY_DB_CONNECTION_STRING: ${{ secrets.REGISTRY_DB_CONNECTION_STRING }}
         run: |
-          flyctl deploy \
-            --config infrastructure/fly/migrations.toml \
-            --dockerfile src/BDP.Registry.Persistence/Dockerfile.migrations \
-            --app "${FLY_APP_NAME}" \
-            --remote-only \
-            --detach
+          chmod +x ./efbundle
+          ./efbundle --connection "$REGISTRY_DB_CONNECTION_STRING"
 
           echo "## Database Migration Completed" >> $GITHUB_STEP_SUMMARY
           echo "Environment: **${{ needs.check-trigger.outputs.environment }}**" >> $GITHUB_STEP_SUMMARY
@@ -142,12 +151,14 @@ jobs:
       - name: Deploy API
         env:
           FLY_APP_NAME: ${{ secrets.FLY_API_APP_NAME }}
+          REGISTRY_DB_CONNECTION_STRING: ${{ secrets.REGISTRY_DB_CONNECTION_STRING }}
         run: |
           flyctl deploy \
             --config infrastructure/fly/api.toml \
             --dockerfile src/BDP.Registry.API/Dockerfile \
             --app "${FLY_APP_NAME}" \
-            --remote-only
+            --remote-only \
+            --env ConnectionStrings__RegistryDatabase="${REGISTRY_DB_CONNECTION_STRING}"
 
           echo "## API Deployment Completed" >> $GITHUB_STEP_SUMMARY
           echo "Environment: **${{ needs.check-trigger.outputs.environment }}**" >> $GITHUB_STEP_SUMMARY
@@ -175,12 +186,16 @@ jobs:
       - name: Deploy Jobs
         env:
           FLY_APP_NAME: ${{ secrets.FLY_JOBS_APP_NAME }}
+          REGISTRY_DB_CONNECTION_STRING: ${{ secrets.REGISTRY_DB_CONNECTION_STRING }}
+          HANGFIRE_DB_CONNECTION_STRING: ${{ secrets.HANGFIRE_DB_CONNECTION_STRING }}
         run: |
           flyctl deploy \
             --config infrastructure/fly/jobs.toml \
             --dockerfile src/BDP.Registry.Jobs/Dockerfile \
             --app "${FLY_APP_NAME}" \
-            --remote-only
+            --remote-only \
+            --env ConnectionStrings__RegistryDatabase="${REGISTRY_DB_CONNECTION_STRING}" \
+            --env ConnectionStrings__HangfireDatabase="${HANGFIRE_DB_CONNECTION_STRING}"
 
           echo "## Jobs Deployment Completed" >> $GITHUB_STEP_SUMMARY
           echo "Environment: **${{ needs.check-trigger.outputs.environment }}**" >> $GITHUB_STEP_SUMMARY
@@ -207,12 +222,14 @@ jobs:
       - name: Deploy Web
         env:
           FLY_APP_NAME: ${{ secrets.FLY_WEB_APP_NAME }}
+          API_URL: ${{ vars.API_URL }}
         run: |
           flyctl deploy \
             --config infrastructure/fly/web.toml \
             --dockerfile src/BDP.Registry.Web/Dockerfile \
             --app "${FLY_APP_NAME}" \
-            --remote-only
+            --remote-only \
+            --env ApiUrl="${API_URL}"
 
           echo "## Web Deployment Completed" >> $GITHUB_STEP_SUMMARY
           echo "Environment: **${{ needs.check-trigger.outputs.environment }}**" >> $GITHUB_STEP_SUMMARY
@@ -242,20 +259,9 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - name: Get API URL
-        id: api-url
-        run: |
-          ENV="${{ needs.check-trigger.outputs.environment }}"
-          if [ "$ENV" == "prod" ]; then
-            API_URL="${{ vars.PROD_API_URL || 'https://bdp-registry-api-prod.fly.dev' }}"
-          elif [ "$ENV" == "staging" ]; then
-            API_URL="${{ vars.STAGING_API_URL || 'https://bdp-registry-api-staging.fly.dev' }}"
-          else
-            API_URL="${{ vars.DEV_API_URL || 'https://bdp-registry-api-dev.fly.dev' }}"
-          fi
-          echo "api_url=$API_URL" >> $GITHUB_OUTPUT
-
       - name: Publish CLI
+        env:
+          API_URL: ${{ vars.API_URL }}
         run: |
           dotnet publish src/BDP.CLI/BDP.CLI.csproj \
             -c Release \
@@ -263,7 +269,7 @@ jobs:
             --self-contained true \
             -p:PublishSingleFile=true \
             -p:PublishTrimmed=true \
-            -p:ApiUrl="${{ steps.api-url.outputs.api_url }}" \
+            -p:ApiUrl="${API_URL}" \
             -o ./dist/${{ matrix.runtime }}
 
       - name: Create archive
