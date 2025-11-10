@@ -128,20 +128,17 @@ jobs:
         run: |
           echo "=== Running EF bundle inside Fly network ==="
           chmod +x ./efbundle
-
           echo "Postgres app: $FLY_POSTGRES_APP_NAME"
 
-          # Run EF bundle inside a lightweight .NET runtime container inside Fly
           flyctl machine run mcr.microsoft.com/dotnet/runtime:9.0 \
             --app "$FLY_POSTGRES_APP_NAME" \
             --org "$FLY_ORG" \
             --region ams \
             --rm \
-            --volume "$(pwd)/efbundle:/efbundle:ro" \
+            --file-local /efbundle=./efbundle \
             --command "dotnet /efbundle --connection '$REGISTRY_DB_CONNECTION_STRING'" \
             --env DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 \
             --restart no
-
 
           echo "## Database Migration Completed" >> $GITHUB_STEP_SUMMARY
           echo "Environment: **${{ needs.check-trigger.outputs.environment }}**" >> $GITHUB_STEP_SUMMARY
