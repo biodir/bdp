@@ -107,13 +107,6 @@ jobs:
       - name: Install EF Tool
         run: dotnet tool install --global dotnet-ef --version 9.0.0
 
-      - name: Debug environment information
-        run: |
-          echo "=== ENVIRONMENT DEBUG ==="
-          echo "GitHub Environment: ${{ needs.check-trigger.outputs.environment }}"
-          echo "Runner OS: ${{ runner.os }}"
-          echo "Workspace: ${{ github.workspace }}"
-
       - name: Build migrations bundle
         run: |
           dotnet ef migrations bundle \
@@ -123,35 +116,18 @@ jobs:
             --output ./efbundle \
             --force
 
-      - name: Debug connection string
-        env:
-          REGISTRY_DB_CONNECTION_STRING: ${{ secrets.REGISTRY_DB_CONNECTION_STRING }}
-        run: |
-          echo "=== CONNECTION STRING DEBUG ==="
-          if [ -z "$REGISTRY_DB_CONNECTION_STRING" ]; then
-            echo "ERROR: REGISTRY_DB_CONNECTION_STRING is empty or not set"
-            exit 1
-          fi
-          echo "Connection string length: ${#REGISTRY_DB_CONNECTION_STRING}"
-          echo "Connection string starts with: ${REGISTRY_DB_CONNECTION_STRING:0:20}..."
-          echo "Connection string ends with: ...${REGISTRY_DB_CONNECTION_STRING: -20}"
+      - name: Setup Fly CLI
+        uses: superfly/flyctl-actions/setup-flyctl@master
 
-          # Check for common connection string formats
-          if [[ "$REGISTRY_DB_CONNECTION_STRING" == postgres://* ]]; then
-            echo "Format: PostgreSQL URI format detected"
-          elif [[ "$REGISTRY_DB_CONNECTION_STRING" == *"Host="* ]]; then
-            echo "Format: Npgsql key-value format detected"
-          else
-            echo "WARNING: Unknown connection string format"
-          fi
-
-      - name: Run migrations
+      - name: Run migrations inside Fly
         env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          FLY_APP_NAME: ${{ secrets.FLY_API_APP_NAME }}
           REGISTRY_DB_CONNECTION_STRING: ${{ secrets.REGISTRY_DB_CONNECTION_STRING }}
         run: |
           chmod +x ./efbundle
-          echo "Running efbundle with connection string..."
-          ./efbundle --connection "$REGISTRY_DB_CONNECTION_STRING"
+          echo "Running migrations inside Fly app: ${FLY_APP_NAME}"
+          flyctl ssh console -a "${FLY_APP_NAME}" --command "./efbundle --connection \"$REGISTRY_DB_CONNECTION_STRING\""
 
           echo "## Database Migration Completed" >> $GITHUB_STEP_SUMMARY
           echo "Environment: **${{ needs.check-trigger.outputs.environment }}**" >> $GITHUB_STEP_SUMMARY

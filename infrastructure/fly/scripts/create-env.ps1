@@ -82,14 +82,43 @@ try {
     Write-Host "  [SKIP] GitHub environment '$Env' already exists or creation failed" -ForegroundColor DarkGray
 }
 
+Write-Host "Converting connection string format..." -ForegroundColor Yellow
+
+# Convert PostgreSQL URI to Npgsql format for efbundle compatibility
+# Handle both with and without database name in URI
+if ($PgConn -match "postgres://([^:]+):([^@]+)@([^/:]+):(\d+)/?([^?]*)?(\?.*)?") {
+    $username = $matches[1]
+    $password = $matches[2]
+    $hostname = $matches[3]
+    $port = $matches[4]
+    $database = $matches[5]
+
+    # If no database specified, use the username as database name (common Postgres pattern)
+    if ([string]::IsNullOrEmpty($database)) {
+        $database = $username
+        Write-Host "  [INFO] No database specified in URI, using username as database: $database" -ForegroundColor Yellow
+    }
+
+    # Build Npgsql connection string
+    $NpgsqlConn = "Host=${hostname};Port=${port};Database=${database};Username=${username};Password=${password}"
+    Write-Host "  [INFO] Converted PostgreSQL URI to Npgsql format" -ForegroundColor Blue
+    Write-Host "  [INFO] Original: postgres://${username}:****@${hostname}:${port}/${database}" -ForegroundColor Blue
+    Write-Host "  [INFO] Converted: Host=${hostname};Port=${port};Database=${database};Username=${username};Password=****" -ForegroundColor Blue
+} else {
+    # If it's already in key-value format or unknown format, use as-is
+    $NpgsqlConn = $PgConn
+    Write-Host "  [INFO] Using connection string as-is (not PostgreSQL URI format)" -ForegroundColor Blue
+    Write-Host "  [INFO] Format: $NpgsqlConn" -ForegroundColor Blue
+}
+
 Write-Host "Configuring GitHub environment secrets..." -ForegroundColor Yellow
 
 gh secret set FLY_API_APP_NAME --repo $Repo --env $Env --body "$Env-bdp-registry-api" 2>$null
 gh secret set FLY_JOBS_APP_NAME --repo $Repo --env $Env --body "$Env-bdp-registry-jobs" 2>$null
 gh secret set FLY_WEB_APP_NAME --repo $Repo --env $Env --body "$Env-bdp-registry-web" 2>$null
 
-gh secret set REGISTRY_DB_CONNECTION_STRING --repo $Repo --env $Env --body $PgConn 2>$null
-gh secret set HANGFIRE_DB_CONNECTION_STRING --repo $Repo --env $Env --body $PgConn 2>$null
+gh secret set REGISTRY_DB_CONNECTION_STRING --repo $Repo --env $Env --body $NpgsqlConn 2>$null
+gh secret set HANGFIRE_DB_CONNECTION_STRING --repo $Repo --env $Env --body $NpgsqlConn 2>$null
 
 Write-Host "Configuring GitHub environment variables..." -ForegroundColor Yellow
 $apiUrl = "https://$Env-bdp-registry-api.fly.dev"
@@ -108,5 +137,8 @@ Write-Host "  - $Env-bdp-registry-web" -ForegroundColor Gray
 Write-Host "Database: $dbName" -ForegroundColor White
 Write-Host "API URL: $apiUrl" -ForegroundColor White
 Write-Host ""
+Write-Host "Connection String (Npgsql Format):" -ForegroundColor White
+Write-Host "$NpgsqlConn" -ForegroundColor Gray
+Write-Host ""
 Write-Host "You can now deploy using:" -ForegroundColor Yellow
-Write-Host "gh workflow run cd-deploy.yml --ref main -f environment=$Env" -ForegroundColor Green
+Write-Host "gh workflow run cd-deploy.yml --ref main" -ForegroundColor Green

@@ -2,22 +2,23 @@ app = 'bdp-registry-jobs-dev'
 primary_region = 'ams'
 
 [build]
-dockerfile = '../../src/BDP.Registry.Jobs/Dockerfile'
+  dockerfile = '../../src/BDP.Registry.Jobs/Dockerfile'
+  context = '../../src/BDP.Registry.Jobs'
 
 [deploy]
-strategy = 'rolling'
+  strategy = 'rolling'
 
 [env]
-DOTNET_ENVIRONMENT = 'Production'
+  DOTNET_ENVIRONMENT = 'Production'
 
 [[services]]
-protocol = ''
-internal_port = 0
+  protocol = ''
+  internal_port = 0
 
 [[vm]]
-memory = '256mb'
-cpu_kind = 'shared'
-cpus = 1
+  memory = '256mb'
+  cpu_kind = 'shared'
+  cpus = 1
 
 [processes]
-worker = 'dotnet BDP.Registry.Jobs.dll'
+  worker = 'dotnet BDP.Registry.Jobs.dll'

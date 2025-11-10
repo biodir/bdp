@@ -3,6 +3,7 @@ primary_region = 'ams'
 
 [build]
   dockerfile = '../../src/BDP.Registry.API/Dockerfile'
+  context = '../../src/BDP.Registry.API/Dockerfile'
 
 [deploy]
   strategy = 'rolling'
