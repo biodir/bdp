@@ -2,7 +2,7 @@ app = "bdp-registry-migrations"
 primary_region = "ams"
 
 [build]
-dockerfile = '../../src/BDP.Registry.Migrations/Dockerfile.migrations'
+dockerfile = '../../src/BDP.Registry.Migrations/Dockerfile'
 context = '../../'
 
 [deploy]

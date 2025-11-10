@@ -113,7 +113,7 @@ jobs:
           # Build & push the migrations image to Fly
           flyctl deploy \
             --config infrastructure/fly/migrations.toml \
-            --dockerfile src/BDP.Registry.Migrations/Dockerfile.migrations \
+            --dockerfile src/BDP.Registry.Migrations/Dockerfile \
             --app "${FLY_MIGRATIONS_APP_NAME}" \
             --remote-only \
             --env ConnectionStrings__RegistryDatabase="${REGISTRY_DB_CONNECTION_STRING}"
