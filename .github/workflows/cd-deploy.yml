@@ -134,7 +134,6 @@ jobs:
             --app "$FLY_POSTGRES_APP_NAME" \
             --org "$FLY_ORG" \
             --region ams \
-            --rm \
             --file-local /efbundle=./efbundle \
             --command "dotnet /efbundle --connection '$REGISTRY_DB_CONNECTION_STRING'" \
             --env DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 \
