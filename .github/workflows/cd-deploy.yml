@@ -126,10 +126,12 @@ jobs:
           FLY_POSTGRES_APP_NAME: ${{ secrets.FLY_POSTGRES_APP_NAME }}
           REGISTRY_DB_CONNECTION_STRING: ${{ secrets.REGISTRY_DB_CONNECTION_STRING }}
         run: |
-          echo "=== Running EF bundle inside Fly network ==="
+          echo "=== Running EF bundle inside Fly network (Attaching for logs) ==="
           chmod +x ./efbundle
           echo "Postgres app: $FLY_POSTGRES_APP_NAME"
 
+          # The crucial addition is '--attach' to stream logs immediately
+          # and '--wait-for-completion' to ensure flyctl doesn't exit until the machine does.
           flyctl machine run mcr.microsoft.com/dotnet/runtime:9.0-alpine \
             --app "$FLY_POSTGRES_APP_NAME" \
             --org "$FLY_ORG" \
@@ -138,7 +140,9 @@ jobs:
             --command "dotnet /efbundle --connection '$REGISTRY_DB_CONNECTION_STRING'" \
             --env DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=1 \
             --restart no \
-            --verbose
+            --verbose \
+            --attach \
+            --wait-for-completion
 
           echo "## Database Migration Completed" >> $GITHUB_STEP_SUMMARY
           echo "Environment: **${{ needs.check-trigger.outputs.environment }}**" >> $GITHUB_STEP_SUMMARY
