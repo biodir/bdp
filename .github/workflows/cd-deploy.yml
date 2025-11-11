@@ -114,9 +114,9 @@ jobs:
           APP_NAME="${FLY_MIGRATIONS_APP_NAME}"
           REGION="ams"
 
-          echo "=== Capturing pre-migration log timestamp ==="
-          last_log=$(flyctl logs --app "$APP_NAME" --region "$REGION" --no-tail | tail -n 1 || echo "")
-          last_ts=$(echo "$last_log" | awk '{print $1}' || echo "")
+          echo "=== Capturing current timestamp for filtering logs ==="
+          DEPLOY_TS=$(date -u +"%Y-%m-%dT%H:%M:%S")
+          echo "Deployment timestamp: $DEPLOY_TS"
 
           echo "=== Deploying Migrations Container ==="
           flyctl deploy \
@@ -127,19 +127,14 @@ jobs:
             --env ConnectionStrings__RegistryDatabase="${REGISTRY_DB_CONNECTION_STRING}" \
             --detach
 
-          # Give a few seconds for logs to appear
+          echo "=== Waiting a few seconds for logs to appear ==="
           sleep 5
 
-          echo "=== Fetching post-migration logs ==="
+          echo "=== Fetching and filtering logs since deployment ==="
           logs=$(flyctl logs --app "$APP_NAME" --region "$REGION" --no-tail)
+          filtered_logs=$(echo "$logs" | awk -v ts="$DEPLOY_TS" '{ if ($1 >= ts) print $0 }')
 
-          echo "=== Filtering logs newer than pre-deploy timestamp ==="
-          if [ -n "$last_ts" ]; then
-            filtered_logs=$(echo "$logs" | awk -v last="$last_ts" '{if ($1 > last) print $0}')
-          else
-            filtered_logs="$logs"
-          fi
-
+          echo "=== Filtered Logs ==="
           echo "$filtered_logs"
 
           if echo "$filtered_logs" | grep -iqE "error|exception"; then
@@ -178,12 +173,6 @@ jobs:
             --remote-only \
             --env ConnectionStrings__RegistryDatabase="${REGISTRY_DB_CONNECTION_STRING}"
 
-          echo "## API Deployment Completed" >> $GITHUB_STEP_SUMMARY
-          echo "Environment: **${{ needs.check-trigger.outputs.environment }}**" >> $GITHUB_STEP_SUMMARY
-          echo "App: **${FLY_APP_NAME}**" >> $GITHUB_STEP_SUMMARY
-          echo "URL: **https://${FLY_APP_NAME}.fly.dev**" >> $GITHUB_STEP_SUMMARY
-          echo "✅ API deployed successfully" >> $GITHUB_STEP_SUMMARY
-
   deploy-jobs:
     name: Deploy Jobs
     needs: [check-trigger, deploy-migrations]
@@ -215,11 +204,6 @@ jobs:
             --env ConnectionStrings__RegistryDatabase="${REGISTRY_DB_CONNECTION_STRING}" \
             --env ConnectionStrings__HangfireDatabase="${HANGFIRE_DB_CONNECTION_STRING}"
 
-          echo "## Jobs Deployment Completed" >> $GITHUB_STEP_SUMMARY
-          echo "Environment: **${{ needs.check-trigger.outputs.environment }}**" >> $GITHUB_STEP_SUMMARY
-          echo "App: **${FLY_APP_NAME}**" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Jobs deployed successfully" >> $GITHUB_STEP_SUMMARY
-
   deploy-web:
     name: Deploy Web
     needs: [check-trigger, deploy-api]
@@ -248,12 +232,6 @@ jobs:
             --app "${FLY_APP_NAME}" \
             --remote-only \
             --env ApiUrl="${API_URL}"
-
-          echo "## Web Deployment Completed" >> $GITHUB_STEP_SUMMARY
-          echo "Environment: **${{ needs.check-trigger.outputs.environment }}**" >> $GITHUB_STEP_SUMMARY
-          echo "App: **${FLY_APP_NAME}**" >> $GITHUB_STEP_SUMMARY
-          echo "URL: **https://${FLY_APP_NAME}.fly.dev**" >> $GITHUB_STEP_SUMMARY
-          echo "✅ Web deployed successfully" >> $GITHUB_STEP_SUMMARY
 
   build-cli:
     name: Build Environment CLI
@@ -313,60 +291,25 @@ jobs:
     runs-on: ubuntu-latest
     if: always()
     steps:
-      - name: Generate Summary
+      - name: Generate Deployment Summary
         run: |
           echo "# Deployment Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Environment:** ${{ needs.check-trigger.outputs.environment }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "## Component Status" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
 
-          check_component() {
-            local result=$1
-            local name=$2
-            local requested=$3
-
-            if [[ "$requested" == "true" ]]; then
-              if [[ "$result" == "success" ]]; then
-                echo "✅ $name: Deployed successfully" >> $GITHUB_STEP_SUMMARY
-              elif [[ "$result" == "failure" ]]; then
-                echo "❌ $name: Deployment failed" >> $GITHUB_STEP_SUMMARY
-              elif [[ "$result" == "cancelled" ]]; then
-                echo "⏹️ $name: Deployment cancelled" >> $GITHUB_STEP_SUMMARY
-              else
-                echo "⏭️ $name: Skipped" >> $GITHUB_STEP_SUMMARY
-              fi
-            else
-              echo "⏭️ $name: Not requested" >> $GITHUB_STEP_SUMMARY
-            fi
-          }
-
-          check_component "${{ needs.deploy-migrations.result }}" "Database Migrations" "${{ needs.check-trigger.outputs.deploy_migrations }}"
-          check_component "${{ needs.deploy-api.result }}" "API" "${{ needs.check-trigger.outputs.deploy_api }}"
-          check_component "${{ needs.deploy-jobs.result }}" "Jobs" "${{ needs.check-trigger.outputs.deploy_jobs }}"
-          check_component "${{ needs.deploy-web.result }}" "Web" "${{ needs.check-trigger.outputs.deploy_web }}"
-          check_component "${{ needs.build-cli.result }}" "CLI Build" "${{ needs.check-trigger.outputs.build_cli }}"
-
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          FAILED=false
+          DEPLOYMENT_STATUS="✅ Deployment completed successfully"
           if [[ "${{ needs.deploy-migrations.result }}" == "failure" ]] || \
              [[ "${{ needs.deploy-api.result }}" == "failure" ]] || \
              [[ "${{ needs.deploy-jobs.result }}" == "failure" ]] || \
              [[ "${{ needs.deploy-web.result }}" == "failure" ]]; then
-            FAILED=true
+            DEPLOYMENT_STATUS="❌ Deployment completed with failures"
           fi
 
-          if [ "$FAILED" = true ]; then
-            echo "❌ Deployment completed with failures" >> $GITHUB_STEP_SUMMARY
-            exit 1
-          else
-            echo "✅ Deployment completed successfully" >> $GITHUB_STEP_SUMMARY
+          echo "$DEPLOYMENT_STATUS" >> $GITHUB_STEP_SUMMARY
 
-            if [[ "${{ needs.check-trigger.outputs.build_cli }}" == "true" ]]; then
-              echo "" >> $GITHUB_STEP_SUMMARY
-              echo "## CLI Artifacts" >> $GITHUB_STEP_SUMMARY
-              echo "Download environment-specific CLI from Actions artifacts" >> $GITHUB_STEP_SUMMARY
-            fi
+          if [[ "${{ needs.check-trigger.outputs.build_cli }}" == "true" ]]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "## CLI Artifacts" >> $GITHUB_STEP_SUMMARY
+            echo "Download environment-specific CLI from Actions artifacts" >> $GITHUB_STEP_SUMMARY
           fi
