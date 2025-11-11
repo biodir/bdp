@@ -12,8 +12,8 @@ primary_region = 'ams'
   DOTNET_ENVIRONMENT = 'Production'
 
 [[services]]
-  protocol = ''
-  internal_port = 0
+  internal_port = 8080
+  processes = ["worker"]
 
 [[vm]]
   memory = '256mb'

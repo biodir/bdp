@@ -109,20 +109,40 @@ jobs:
           FLY_MIGRATIONS_APP_NAME: ${{ secrets.FLY_MIGRATIONS_APP_NAME }}
           REGISTRY_DB_CONNECTION_STRING: ${{ secrets.REGISTRY_DB_CONNECTION_STRING }}
         run: |
+          set -euo pipefail
+
+          APP_NAME="${FLY_MIGRATIONS_APP_NAME}"
+          REGION="ams"
+
+          echo "=== Capturing pre-migration log timestamp ==="
+          last_log=$(flyctl logs --app "$APP_NAME" --region "$REGION" --no-tail | tail -n 1 || echo "")
+          last_ts=$(echo "$last_log" | awk '{print $1}' || echo "")
+
           echo "=== Deploying Migrations Container ==="
           flyctl deploy \
             --config infrastructure/fly/migrations.toml \
             --dockerfile src/BDP.Registry.Migrations/Dockerfile \
-            --app "${FLY_MIGRATIONS_APP_NAME}" \
+            --app "$APP_NAME" \
             --remote-only \
             --env ConnectionStrings__RegistryDatabase="${REGISTRY_DB_CONNECTION_STRING}" \
             --detach
 
-          echo "=== Retrieving Migrations Logs ==="
-          logs=$(flyctl logs --app "${FLY_MIGRATIONS_APP_NAME}" --region ams --no-tail)
-          echo "$logs"
+          # Give a few seconds for logs to appear
+          sleep 5
 
-          if echo "$logs" | grep -q -i "error\|exception"; then
+          echo "=== Fetching post-migration logs ==="
+          logs=$(flyctl logs --app "$APP_NAME" --region "$REGION" --no-tail)
+
+          echo "=== Filtering logs newer than pre-deploy timestamp ==="
+          if [ -n "$last_ts" ]; then
+            filtered_logs=$(echo "$logs" | awk -v last="$last_ts" '{if ($1 > last) print $0}')
+          else
+            filtered_logs="$logs"
+          fi
+
+          echo "$filtered_logs"
+
+          if echo "$filtered_logs" | grep -iqE "error|exception"; then
             echo "❌ Migrations failed, aborting workflow."
             exit 1
           fi
