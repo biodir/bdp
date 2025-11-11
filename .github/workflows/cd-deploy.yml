@@ -103,28 +103,34 @@ jobs:
       - name: Setup flyctl
         uses: superfly/flyctl-actions/setup-flyctl@master
 
-      - name: Build and Deploy Migrations Container
+      - name: Deploy and Run Migrations
         env:
           FLY_ORG: ${{ vars.FLY_ORG }}
           FLY_MIGRATIONS_APP_NAME: ${{ secrets.FLY_MIGRATIONS_APP_NAME }}
           REGISTRY_DB_CONNECTION_STRING: ${{ secrets.REGISTRY_DB_CONNECTION_STRING }}
         run: |
           echo "=== Deploying Migrations Container ==="
+          # deploy with release_command
           flyctl deploy \
             --config infrastructure/fly/migrations.toml \
+            --dockerfile src/BDP.Registry.Migrations/Dockerfile \
             --app "${FLY_MIGRATIONS_APP_NAME}" \
             --remote-only \
             --env ConnectionStrings__RegistryDatabase="${REGISTRY_DB_CONNECTION_STRING}" \
             --detach
 
-      - name: Confirm Deployment Logs
-        env:
-          FLY_ORG: ${{ vars.FLY_ORG }}
-          FLY_MIGRATIONS_APP_NAME: ${{ secrets.FLY_MIGRATIONS_APP_NAME }}
-        run: |
+          # Wait for release command result
           echo "=== Checking Migrations Logs ==="
-          flyctl logs "${FLY_MIGRATIONS_APP_NAME}" --region ams --org "$FLY_ORG" --lines 100
-          echo "✅ Migrations deployed successfully" >> $GITHUB_STEP_SUMMARY
+          logs=$(flyctl logs --app "${FLY_MIGRATIONS_APP_NAME}" --region ams --lines 100)
+          echo "$logs"
+
+          # Check last line or grep for errors
+          if echo "$logs" | grep -q -i "error\|exception"; then
+            echo "❌ Migrations failed, aborting workflow."
+            exit 1
+          fi
+
+          echo "✅ Migrations completed successfully."
 
   deploy-api:
     name: Deploy API
