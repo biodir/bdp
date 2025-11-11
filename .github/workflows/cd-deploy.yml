@@ -103,37 +103,27 @@ jobs:
       - name: Setup flyctl
         uses: superfly/flyctl-actions/setup-flyctl@master
 
-      - name: Build and Push Migrations Container
+      - name: Build and Deploy Migrations Container
         env:
           FLY_ORG: ${{ vars.FLY_ORG }}
           FLY_MIGRATIONS_APP_NAME: ${{ secrets.FLY_MIGRATIONS_APP_NAME }}
           REGISTRY_DB_CONNECTION_STRING: ${{ secrets.REGISTRY_DB_CONNECTION_STRING }}
         run: |
           echo "=== Deploying Migrations Container ==="
-          # Build & push the migrations image to Fly
           flyctl deploy \
             --config infrastructure/fly/migrations.toml \
-            --dockerfile src/BDP.Registry.Migrations/Dockerfile \
             --app "${FLY_MIGRATIONS_APP_NAME}" \
             --remote-only \
-            --env ConnectionStrings__RegistryDatabase="${REGISTRY_DB_CONNECTION_STRING}"
+            --env ConnectionStrings__RegistryDatabase="${REGISTRY_DB_CONNECTION_STRING}" \
+            --detach
 
-      - name: Run Migrations Container
+      - name: Confirm Deployment Logs
         env:
           FLY_ORG: ${{ vars.FLY_ORG }}
           FLY_MIGRATIONS_APP_NAME: ${{ secrets.FLY_MIGRATIONS_APP_NAME }}
-          REGISTRY_DB_CONNECTION_STRING: ${{ secrets.REGISTRY_DB_CONNECTION_STRING }}
         run: |
-          echo "=== Running Migrations CLI inside Fly Machine ==="
-          # Run the migrations CLI container; ENTRYPOINT is the CLI DLL
-          flyctl machines run "${FLY_MIGRATIONS_APP_NAME}" \
-            --rm \
-            --env ConnectionStrings__RegistryDatabase="${REGISTRY_DB_CONNECTION_STRING}" \
-            --region ams \
-            --org "$FLY_ORG"
-
-          echo "## Database Migration Completed" >> $GITHUB_STEP_SUMMARY
-          echo "Environment: **${{ needs.check-trigger.outputs.environment }}**" >> $GITHUB_STEP_SUMMARY
+          echo "=== Checking Migrations Logs ==="
+          flyctl logs "${FLY_MIGRATIONS_APP_NAME}" --region ams --org "$FLY_ORG" --lines 100
           echo "✅ Migrations deployed successfully" >> $GITHUB_STEP_SUMMARY
 
   deploy-api:
