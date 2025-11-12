@@ -138,7 +138,7 @@ jobs:
           fi
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: cli-${{ matrix.runtime }}
           path: bdp-cli-${{ needs.validate.outputs.version }}-${{ matrix.runtime }}.*
